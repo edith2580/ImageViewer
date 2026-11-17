@@ -3,17 +3,22 @@
              xmlns:helpers="clr-namespace:ImageViewer.Helpers"
              x:Class="ImageViewer.App"
              RequestedThemeVariant="Light">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://ImageViewer/Resources/Icons.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <helpers:EnumEqualsConverter x:Key="EnumEquals" />
+            <helpers:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <helpers:BoolToVisibilityConverter x:Key="InverseBoolToVisibility" Invert="True" />
+            <helpers:InverseBoolConverter x:Key="InverseBool" />
+            <helpers:BackgroundToBrushConverter x:Key="BackgroundToBrush" />
+            <helpers:BackgroundToForegroundConverter x:Key="BackgroundToForeground" />
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme DensityStyle="Compact" />
         <StyleInclude Source="avares://ImageViewer/Resources/Styles.axaml" />
     </Application.Styles>
-
-    <Application.Resources>
-        <helpers:EnumEqualsConverter x:Key="EnumEquals" />
-        <helpers:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-        <helpers:BoolToVisibilityConverter x:Key="InverseBoolToVisibility" Invert="True" />
-        <helpers:InverseBoolConverter x:Key="InverseBool" />
-        <helpers:BackgroundToBrushConverter x:Key="BackgroundToBrush" />
-        <helpers:BackgroundToForegroundConverter x:Key="BackgroundToForeground" />
-    </Application.Resources>
 </Application>

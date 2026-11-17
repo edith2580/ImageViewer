@@ -136,7 +136,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ObservableCollection<ThumbnailItemViewModel> _thumbnailItems = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PositionText), nameof(ThumbnailSelectedIndex), nameof(HasImages))]
+    [NotifyPropertyChangedFor(nameof(PositionText), nameof(ThumbnailSelectedIndex), nameof(HasImages), nameof(ShowThumbnailStrip))]
     private int _currentIndex = -1;
 
     [ObservableProperty]
@@ -172,7 +172,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private bool _isFullScreen;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SlideShowButtonText))]
     private bool _isSlideShowPlaying;
 
     public bool HasImages => _images.Count > 0;
@@ -207,12 +206,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public string ScaleText => $"{Scale * 100:0}%";
-
-    /// <summary>재생 / 일시정지 아이콘 글리프 (Segoe Fluent Icons).</summary>
-    public string SlideShowButtonText => IsSlideShowPlaying ? PauseGlyph : PlayGlyph;
-
-    private const string PlayGlyph = "\uE768";
-    private const string PauseGlyph = "\uE769";
 
     /// <summary>썸네일 목록 선택 위치. 사용자가 선택하면 해당 이미지로 이동한다.</summary>
     public int ThumbnailSelectedIndex
@@ -335,8 +328,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
             Settings.Thumbnail.Visible = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowThumbnailStrip));
         }
     }
+
+    public bool ShowThumbnailStrip => ThumbnailsVisible && HasImages;
 
     public double ThumbnailSize => Settings.Thumbnail.Size;
 
@@ -1143,6 +1139,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(SlideShowRepeat));
         OnPropertyChanged(nameof(ThumbnailsVisible));
+        OnPropertyChanged(nameof(ShowThumbnailStrip));
         OnPropertyChanged(nameof(ThumbnailSize));
         OnPropertyChanged(nameof(ThumbnailScrollBarVisibility));
         OnPropertyChanged(nameof(Background));

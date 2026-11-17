@@ -138,14 +138,12 @@
         <Setter Property="Opacity" Value="0.4" />
     </Style>
 
-    <!-- 아이콘 버튼 (Windows 기본 아이콘 글꼴: Win11 Segoe Fluent Icons, Win10 Segoe MDL2 Assets) -->
+    <!-- 아이콘 버튼 (크로스 플랫폼 벡터 PathIcon) -->
     <Style Selector="Button.IconButton">
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Foreground" Value="{StaticResource PanelForeground}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="15" />
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="30" />
         <Setter Property="Padding" Value="0" />
@@ -153,6 +151,14 @@
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="Button.IconButton PathIcon">
+        <Setter Property="Width" Value="15" />
+        <Setter Property="Height" Value="15" />
+        <Setter Property="Foreground" Value="{StaticResource PanelForeground}" />
+    </Style>
+    <Style Selector="Button.IconButton:pointerover PathIcon">
+        <Setter Property="Foreground" Value="#FF7DB4FF" />
     </Style>
     <Style Selector="Button.IconButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{StaticResource HoverBrush}" />
@@ -170,14 +176,20 @@
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="32" />
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="10" />
         <Setter Property="Foreground" Value="#FFE8E8E8" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.CaptionButton PathIcon">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Height" Value="10" />
+        <Setter Property="Foreground" Value="#FFE8E8E8" />
+    </Style>
+    <Style Selector="Button.CaptionButton:pointerover PathIcon">
+        <Setter Property="Foreground" Value="#FF7DB4FF" />
     </Style>
     <Style Selector="Button.CaptionButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="#33FFFFFF" />
@@ -191,8 +203,6 @@
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Width" Value="46" />
         <Setter Property="Height" Value="32" />
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="10" />
         <Setter Property="Foreground" Value="#FFE8E8E8" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -200,12 +210,66 @@
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <Style Selector="Button.CloseCaptionButton PathIcon">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Height" Value="10" />
+        <Setter Property="Foreground" Value="#FFE8E8E8" />
+    </Style>
+    <Style Selector="Button.CloseCaptionButton:pointerover PathIcon">
+        <Setter Property="Foreground" Value="White" />
+    </Style>
     <Style Selector="Button.CloseCaptionButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="#FFC42B1C" />
         <Setter Property="Foreground" Value="White" />
     </Style>
     <Style Selector="Button.CloseCaptionButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="#FFC94F45" />
+    </Style>
+
+    <!-- macOS 스타일 타이틀바 신호등 버튼 (닫기 · 최소화 · 최대화) -->
+    <Style Selector="Button.MacTrafficButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Width="12"
+                        Height="12"
+                        CornerRadius="6"
+                        Background="{TemplateBinding Background}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.MacTrafficButton PathIcon">
+        <Setter Property="Width" Value="7" />
+        <Setter Property="Height" Value="7" />
+        <Setter Property="Foreground" Value="#B3000000" />
+        <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="StackPanel.MacTrafficPanel:pointerover Button.MacTrafficButton PathIcon">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.MacTrafficButton:pressed">
+        <Setter Property="Opacity" Value="0.75" />
+    </Style>
+    <Style Selector="Button.MacCloseButton">
+        <Setter Property="Background" Value="#FFFF5F57" />
+    </Style>
+    <Style Selector="Button.MacMinimizeButton">
+        <Setter Property="Background" Value="#FFFEBC2E" />
+    </Style>
+    <Style Selector="Button.MacMaximizeButton">
+        <Setter Property="Background" Value="#FF28C840" />
     </Style>
 
     <!-- 썸네일 항목 -->
@@ -219,6 +283,53 @@
         <Setter Property="Background" Value="Transparent" />
     </Style>
 
+    <!-- 썸네일 목록 하단 수평 스크롤바: FluentTheme 템플릿을 유지하면서 Slider와 동일한 슬림 트랙 + 둥근 Thumb 적용 -->
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal">
+        <Setter Property="MinHeight" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ Border#HorizontalRoot">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ Rectangle#TrackRect">
+        <Setter Property="Height" Value="4" />
+        <Setter Property="RadiusX" Value="2" />
+        <Setter Property="RadiusY" Value="2" />
+        <Setter Property="Fill" Value="#66888888" />
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ RepeatButton#PART_LineUpButton">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ RepeatButton#PART_LineDownButton">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ Track > Thumb">
+        <Setter Property="MinWidth" Value="28" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="MinHeight" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="BorderBrush" Value="White" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="RenderTransform" Value="none" />
+        <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal /template/ Track > Thumb /template/ Border">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderBrush" Value="White" />
+        <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="ListBox.ThumbnailList ScrollBar:horizontal:pointerover /template/ Track > Thumb">
+        <Setter Property="Background" Value="#FF5A9CFF" />
+    </Style>
+
     <!-- 상단 바 · 하단 바 고정(Pin) 토글 -->
     <Style Selector="ToggleButton.PinToggleButton">
         <Setter Property="Focusable" Value="False" />
@@ -227,29 +338,38 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-        <Setter Property="FontSize" Value="15" />
         <Setter Property="Foreground" Value="{StaticResource PanelForeground}" />
-        <Setter Property="Content" Value="&#xE718;" />
         <Setter Property="ToolTip.Tip" Value="고정 (해제하면 마우스를 올렸을 때만 표시)" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="CornerRadius" Value="3" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <PathIcon x:Name="PART_PinIcon"
+                              Data="{StaticResource IconPin}"
+                              Width="14" Height="14"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
     </Style>
-    <Style Selector="ToggleButton.PinToggleButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="ToggleButton.PinToggleButton:pointerover">
         <Setter Property="Background" Value="{StaticResource HoverBrush}" />
         <Setter Property="Foreground" Value="#FF7DB4FF" />
     </Style>
     <Style Selector="ToggleButton.PinToggleButton:checked">
-        <Setter Property="Content" Value="&#xE840;" />
         <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
         <Setter Property="ToolTip.Tip" Value="고정 해제" />
     </Style>
-    <Style Selector="ToggleButton.PinToggleButton:checked /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="Transparent" />
+    <Style Selector="ToggleButton.PinToggleButton:checked /template/ PathIcon#PART_PinIcon">
+        <Setter Property="Data" Value="{StaticResource IconPinFilled}" />
     </Style>
-    <Style Selector="ToggleButton.PinToggleButton:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="ToggleButton.PinToggleButton:checked:pointerover">
         <Setter Property="Background" Value="{StaticResource HoverBrush}" />
         <Setter Property="Foreground" Value="#FF7DB4FF" />
     </Style>

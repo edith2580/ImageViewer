@@ -49,6 +49,10 @@ public partial class MainWindow : Window
         _vm = viewModel;
         DataContext = viewModel;
 
+        var isMac = OperatingSystem.IsMacOS();
+        MacCaptionPanel.IsVisible = isMac;
+        WinCaptionPanel.IsVisible = !isMac;
+
         _vm.LayoutChanged += OnLayoutChanged;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
 
@@ -74,6 +78,7 @@ public partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnWindowPointerMoved, RoutingStrategies.Tunnel);
         PointerExited += OnWindowPointerExited;
+        AddHandler(DragDrop.DragEnterEvent, OnDragOver);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
 
@@ -224,7 +229,7 @@ public partial class MainWindow : Window
     private void UpdateChrome(bool allowHide)
     {
         var menuVisible = _vm.TopBarPinned || _menuHover || IsMenuInUse || TopBar.IsPointerOver;
-        var barVisible = _vm.BottomBarPinned || _barHover || BottomBar.IsKeyboardFocusWithin;
+        var barVisible = _vm.BottomBarPinned || _barHover || BottomBar.IsKeyboardFocusWithin || BottomBar.IsPointerOver;
 
         if (menuVisible)
         {
@@ -287,6 +292,19 @@ public partial class MainWindow : Window
 
     private void OnWindowPointerExited(object? sender, PointerEventArgs e)
     {
+        var p = e.GetPosition(RootGrid);
+        var bounds = RootGrid.Bounds;
+        if (bounds.Width > 0 && bounds.Height > 0 &&
+            p.X >= 0 && p.X <= bounds.Width &&
+            p.Y >= 0 && p.Y <= bounds.Height)
+        {
+            if (TopBar.IsPointerOver || p.Y <= Math.Max(MinRevealZone, _topBarExtent) ||
+                BottomBar.IsPointerOver || p.Y >= bounds.Height - Math.Max(MinRevealZone, _bottomBarExtent))
+            {
+                return;
+            }
+        }
+
         _menuHover = false;
         _barHover = false;
         UpdateChrome(allowHide: true);
@@ -346,8 +364,14 @@ public partial class MainWindow : Window
     {
         UpdateMaximizedMargin();
         var maximized = state == WindowState.Maximized;
-        MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
-        ToolTip.SetTip(MaximizeButton, maximized ? "이전 크기로 복원" : "최대화");
+        if (this.TryFindResource(maximized ? "IconRestore" : "IconMaximize", ActualThemeVariant, out var resource) &&
+            resource is Avalonia.Media.Geometry geometry)
+        {
+            MaximizeIcon.Data = geometry;
+        }
+        var tip = maximized ? "이전 크기로 복원" : "최대화";
+        ToolTip.SetTip(MaximizeButton, tip);
+        ToolTip.SetTip(MacMaximizeButton, tip);
     }
 
     private void UpdateMaximizedMargin()
@@ -472,38 +496,8 @@ public partial class MainWindow : Window
 
     private async void OnShowShortcuts(object? sender, RoutedEventArgs e)
     {
-        const string text =
-            "Alt + Enter\t전체 화면 전환\n" +
-            "Esc\t\t프로그램 종료 (대화 상자에서는 닫기)\n" +
-            "`\t\t상단 · 하단 바 고정(Pin) 일괄 전환\n" +
-            "← / ↑\t\t이전 이미지\n" +
-            "→ / ↓\t\t다음 이미지\n" +
-            "Home / End\t처음 / 마지막 이미지\n" +
-            "[ / ]\t\t이전 / 다음 폴더 또는 ZIP 파일\n" +
-            "PgUp / PgDn\t이전 / 다음 페이지 (다중 페이지 TIFF, 그 밖에는 이미지)\n" +
-            "R / L\t\t시계 / 반시계 방향 90° 회전\n" +
-            "H / V\t\t좌우 / 상하 반전\n" +
-            "Tab\t\t이미지 정보(EXIF) 패널\n" +
-            "Enter\t\t이미지 목록\n" +
-            "0\t\t원본 크기\n" +
-            "7\t\t폭 맞춤\n" +
-            "8\t\t높이 맞춤\n" +
-            "9\t\t꽉 차게 보기\n" +
-            "U\t\t필터 없음\n" +
-            "I\t\t부드럽게\n" +
-            "S\t\t부드럽게 + 선명하게\n" +
-            "+ / =\t\t확대\n" +
-            "-\t\t축소\n" +
-            "Ctrl + 0\t\t배율 초기화\n" +
-            "Space\t\t슬라이드쇼 재생 / 일시정지\n" +
-            "Ctrl + O\t\t파일 / ZIP 열기\n" +
-            "Ctrl + Shift + O\t폴더 열기\n\n" +
-            "마우스: 휠 위/아래 = 이전/다음 이미지 (설정 변경 가능), Ctrl+휠 = 확대/축소,\n" +
-            "Shift+휠 = 이미지 상하 이동, 드래그 = 창 이동 (전체 화면에서는 이미지 이동),\n" +
-            "가운데 버튼 드래그 = 이미지 이동,\n" +
-            "더블클릭 = 최대화 / 복원,\n" +
-            "뒤로/앞으로 버튼 = 이전/다음 이미지";
-        await MessageBoxWindow.ShowAsync(this, text, "단축키 안내", isYesNo: false);
+        var dialog = new ShortcutsWindow();
+        await dialog.ShowDialog(this);
     }
 
     private async void OnShowAbout(object? sender, RoutedEventArgs e)
@@ -734,12 +728,26 @@ public partial class MainWindow : Window
     private void ScrollThumbnailIntoView()
     {
         var index = _vm.CurrentIndex;
-        if (index < 0 || index >= ThumbnailList.Items.Count || !ThumbnailList.IsVisible)
+        var count = ThumbnailList.Items.Count;
+        if (index < 0 || index >= count || !ThumbnailList.IsVisible)
         {
             return;
         }
 
         ThumbnailList.ScrollIntoView(index);
+
+        if (ThumbnailList.FindDescendantOfType<ScrollViewer>() is { } scroll)
+        {
+            var extentWidth = scroll.Extent.Width;
+            var viewportWidth = scroll.Viewport.Width;
+            if (extentWidth > viewportWidth && viewportWidth > 0)
+            {
+                var itemWidth = extentWidth / count;
+                var targetX = index * itemWidth - (viewportWidth - itemWidth) / 2;
+                var maxScroll = Math.Max(0, extentWidth - viewportWidth);
+                scroll.Offset = new Vector(Math.Clamp(targetX, 0, maxScroll), scroll.Offset.Y);
+            }
+        }
     }
 
     private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -775,19 +783,82 @@ public partial class MainWindow : Window
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Link : DragDropEffects.None;
+        var hasPayload = e.DataTransfer.Contains(DataFormat.File) || e.DataTransfer.Contains(DataFormat.Text);
+        if (!hasPayload)
+        {
+            e.DragEffects = DragDropEffects.None;
+        }
+        else if (e.DragEffects.HasFlag(DragDropEffects.Copy))
+        {
+            e.DragEffects = DragDropEffects.Copy;
+        }
+        else if (e.DragEffects.HasFlag(DragDropEffects.Link))
+        {
+            e.DragEffects = DragDropEffects.Link;
+        }
+        else
+        {
+            e.DragEffects = DragDropEffects.Copy;
+        }
+
         e.Handled = true;
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {
-        var files = e.DataTransfer.TryGetFiles();
-        var path = files?.Select(f => f.TryGetLocalPath()).FirstOrDefault(p => !string.IsNullOrEmpty(p));
+        e.Handled = true;
+        var path = ExtractDropPath(e.DataTransfer);
         if (path is not null)
         {
             Activate();
             await _vm.OpenPathAsync(path);
         }
+    }
+
+    private static string? ExtractDropPath(IDataTransfer data)
+    {
+        var files = data.TryGetFiles();
+        if (files is not null)
+        {
+            foreach (var item in files)
+            {
+                var local = item.TryGetLocalPath();
+                if (!string.IsNullOrEmpty(local))
+                {
+                    return local;
+                }
+
+                if (item.Path is { IsFile: true } uri)
+                {
+                    return uri.LocalPath;
+                }
+            }
+        }
+
+        // Linux 일부 파일 관리자(X11/Wayland text/uri-list 등)는 텍스트 URI 목록으로 전달한다.
+        var text = data.TryGetText();
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            foreach (var rawLine in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (rawLine.StartsWith('#'))
+                {
+                    continue;
+                }
+
+                if (Uri.TryCreate(rawLine, UriKind.Absolute, out var uri) && uri.IsFile)
+                {
+                    return uri.LocalPath;
+                }
+
+                if (File.Exists(rawLine) || Directory.Exists(rawLine))
+                {
+                    return rawLine;
+                }
+            }
+        }
+
+        return null;
     }
 
     #endregion

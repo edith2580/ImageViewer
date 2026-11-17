@@ -51,6 +51,7 @@
   <ItemGroup>
     <!-- 창 제목 표시줄 · 작업 표시줄용 아이콘 (exe 아이콘은 ApplicationIcon) -->
     <AvaloniaResource Include="Resources\ImageViewer.ico" />
+    <AvaloniaResource Include="Resources\Fonts\*" />
   </ItemGroup>
 
   <ItemGroup>

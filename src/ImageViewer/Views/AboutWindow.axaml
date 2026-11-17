@@ -115,8 +115,8 @@
                     ToolTip.Tip="{Binding ProjectUrl}"
                     IsVisible="{Binding ProjectUrl, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center"
-                               Margin="0,1,6,0" />
+                    <PathIcon Data="{StaticResource IconOpenExternal}" Width="13" Height="13" VerticalAlignment="Center"
+                              Margin="0,1,6,0" />
                     <TextBlock Text="GitHub 페이지" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
