@@ -164,15 +164,70 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/dist
-          chmod +x artifacts/publish/${{ matrix.rid }}/ImageViewer
-          tar -czf artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz \
-            -C artifacts/publish/${{ matrix.rid }} .
+          PUB_DIR="artifacts/publish/${{ matrix.rid }}"
+          chmod +x "$PUB_DIR/ImageViewer"
+          rm -f "$PUB_DIR"/*.pdb
+
+          if [[ "${{ matrix.rid }}" == osx-* ]]; then
+            APP_DIR="artifacts/bundle/${{ matrix.rid }}/ImageViewer.app"
+            mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+            cp -R "$PUB_DIR/"* "$APP_DIR/Contents/MacOS/"
+            chmod +x "$APP_DIR/Contents/MacOS/ImageViewer"
+
+            cat > "$APP_DIR/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>ImageViewer</string>
+            <key>CFBundleDisplayName</key>
+            <string>ImageViewer</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.edith2580.imageviewer</string>
+            <key>CFBundleVersion</key>
+            <string>${{ needs.prepare.outputs.version }}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ needs.prepare.outputs.version }}</string>
+            <key>CFBundleExecutable</key>
+            <string>ImageViewer</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>12.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+            for f in "$APP_DIR/Contents/MacOS/"*.dylib; do
+              [ -e "$f" ] && codesign --force --sign - "$f"
+            done
+            codesign --force --deep --sign - "$APP_DIR"
+
+            tar -czf "artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz" \
+              -C "artifacts/bundle/${{ matrix.rid }}" ImageViewer.app
+
+            DMG_STAGING="artifacts/dmg/${{ matrix.rid }}"
+            rm -rf "$DMG_STAGING"
+            mkdir -p "$DMG_STAGING"
+            cp -R "$APP_DIR" "$DMG_STAGING/"
+            ln -s /Applications "$DMG_STAGING/Applications"
+            hdiutil create -volname "ImageViewer" \
+              -srcfolder "$DMG_STAGING" \
+              -ov -format UDZO \
+              "artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.dmg"
+          else
+            tar -czf "artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz" \
+              -C "$PUB_DIR" .
+          fi
 
       - name: Upload ${{ matrix.rid }} artifact
         uses: actions/upload-artifact@v4
         with:
           name: ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}
-          path: artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz
+          path: artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.*
           if-no-files-found: error
 
   release:

@@ -22,7 +22,7 @@ Unicode true
 ManifestDPIAware true
 
 !ifndef VERSION
-  !define VERSION "1.0.7"
+  !define VERSION "1.0.8"
 !endif
 !ifndef PUBLISH_DIR
   !define PUBLISH_DIR "..\..\artifacts\publish\win-x64"
