@@ -119,12 +119,23 @@ public sealed class UpdateTests : IDisposable
     [Fact]
     public void Install_kind_is_detected_from_install_location()
     {
+        var installDir = Path.Combine(_dir, "Programs", "ImageViewer");
+        var toolsDir = Path.Combine(_dir, "Tools");
+        var devDir = Path.Combine(_dir, "src", "bin", "Debug");
+
         Assert.Equal(InstallKind.Installed, UpdateInstaller.Detect(
-            @"C:\Users\u\AppData\Local\Programs\ImageViewer\ImageViewer.exe", @"C:\Users\u\AppData\Local\Programs\imageviewer\", true));
+            Path.Combine(installDir, "ImageViewer.exe"), installDir + Path.DirectorySeparatorChar, true));
         Assert.Equal(InstallKind.Portable, UpdateInstaller.Detect(
-            @"D:\Tools\ImageViewer.exe", @"C:\Users\u\AppData\Local\Programs\ImageViewer", false));
-        Assert.Equal(InstallKind.Portable, UpdateInstaller.Detect(@"D:\Tools\ImageViewer.exe", null, false));
-        Assert.Equal(InstallKind.Unsupported, UpdateInstaller.Detect(@"E:\src\bin\Debug\ImageViewer.exe", null, true));
+            Path.Combine(toolsDir, "ImageViewer.exe"), installDir, false));
+        Assert.Equal(InstallKind.Portable, UpdateInstaller.Detect(Path.Combine(toolsDir, "ImageViewer.exe"), null, false));
+        Assert.Equal(InstallKind.Unsupported, UpdateInstaller.Detect(Path.Combine(devDir, "ImageViewer.exe"), null, true));
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(InstallKind.Installed, UpdateInstaller.Detect(
+                @"C:\Users\u\AppData\Local\Programs\ImageViewer\ImageViewer.exe",
+                @"C:\Users\u\AppData\Local\Programs\imageviewer\", true));
+        }
     }
 
     [Fact]

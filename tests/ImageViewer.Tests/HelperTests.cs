@@ -79,6 +79,11 @@ public class CommandLineHelperTests
     [Fact]
     public void Drive_root_with_broken_quote_is_repaired()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         // 탐색기가 "D:\" 를 "%1" 로 넘기면 D:" 로 들어온다.
         var path = CommandLineHelper.NormalizePath("C:\"");
         Assert.Equal(@"C:\", path);
@@ -96,7 +101,8 @@ public class CommandLineHelperTests
     [Fact]
     public void Missing_path_reports_error()
     {
-        var options = CommandLineHelper.Parse([@"Z:\does\not\exist\" + Guid.NewGuid()]);
+        var missing = Path.Combine(Path.GetTempPath(), "iv-missing-" + Guid.NewGuid().ToString("N"));
+        var options = CommandLineHelper.Parse([missing]);
         Assert.Null(options.Path);
         Assert.NotNull(options.Error);
     }
