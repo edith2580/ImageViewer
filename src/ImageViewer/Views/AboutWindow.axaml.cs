@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using ImageViewer.Services;
 using ImageViewer.ViewModels;
@@ -22,6 +23,22 @@ public partial class AboutWindow : Window
         else
         {
             UpdateGroup.DataContext = update;
+        }
+
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        Opened += (_, _) =>
+        {
+            Activate();
+            CloseButton.Focus();
+        };
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
         }
     }
 

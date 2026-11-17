@@ -392,6 +392,19 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // 팝업 다이얼로그가 열려 있으면 메인 창 단축키(특히 Esc 종료)를 실행하지 않고,
+        // 포커스가 메인 창에 남아 있는 환경(Linux 등)에서도 Esc 로 열린 다이얼로그를 닫는다.
+        if (OwnedWindows.LastOrDefault(w => w.IsVisible) is { } activeDialog)
+        {
+            if (e.Key == Key.Escape)
+            {
+                activeDialog.Close();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (KeyboardHelper.IsInputControlFocused(this) ||
             FocusManager?.GetFocusedElement() is MenuItem)
         {

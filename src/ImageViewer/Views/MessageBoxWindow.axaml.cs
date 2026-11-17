@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 
 namespace ImageViewer.Views;
@@ -8,6 +9,21 @@ public partial class MessageBoxWindow : Window
     public MessageBoxWindow()
     {
         InitializeComponent();
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        Opened += (_, _) =>
+        {
+            Activate();
+            PrimaryButton.Focus();
+        };
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close(false);
+            e.Handled = true;
+        }
     }
 
     public static Task<bool> ShowAsync(Window? owner, string message, string title, bool isYesNo)

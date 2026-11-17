@@ -122,7 +122,7 @@
             </Button>
             <TextBlock x:Name="CopiedText" Text="복사했습니다." Classes="Muted" Margin="10,0,0,0"
                        VerticalAlignment="Center" IsVisible="False" />
-            <Button DockPanel.Dock="Right" Content="닫기" Width="84" Height="28" IsDefault="True" IsCancel="True"
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="닫기" Width="84" Height="28" IsDefault="True" IsCancel="True"
                     HorizontalAlignment="Right" Click="OnClose" />
         </DockPanel>
     </StackPanel>

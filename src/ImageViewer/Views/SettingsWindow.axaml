@@ -143,7 +143,7 @@
                     Command="{Binding OpenDefaultAppsCommand}"
                     ToolTip.Tip="ImageViewer 를 Windows 기본 앱 목록에 등록하고 [설정 &gt; 앱 &gt; 기본 앱] 을 엽니다" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                <Button Content="확인" Width="84" Height="28" IsDefault="True" Click="OnOk" />
+                <Button x:Name="OkButton" Content="확인" Width="84" Height="28" IsDefault="True" Click="OnOk" />
                 <Button Content="취소" Width="84" Height="28" IsCancel="True" Click="OnCancel" />
             </StackPanel>
         </DockPanel>
