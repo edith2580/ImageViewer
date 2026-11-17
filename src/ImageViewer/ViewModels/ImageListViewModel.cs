@@ -1,6 +1,4 @@
-using System.Collections;
-using System.ComponentModel;
-using System.Windows.Data;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ImageViewer.Helpers;
@@ -42,8 +40,6 @@ public sealed class ImageListItem
 /// <summary>Enter 키로 여는 이미지 목록 대화 상자.</summary>
 public sealed partial class ImageListViewModel : ObservableObject
 {
-    private readonly ListCollectionView _view;
-
     public ImageListViewModel(
         IReadOnlyList<ImageInfo> images,
         int currentIndex,
@@ -52,7 +48,6 @@ public sealed partial class ImageListViewModel : ObservableObject
     {
         var items = images.Select((info, i) => new ImageListItem(i, info)).ToList();
         Items = items;
-        _view = new ListCollectionView(items);
         Thumbnails = thumbnails ?? [];
         CurrentIndex = currentIndex;
         Title = source is null
@@ -66,7 +61,7 @@ public sealed partial class ImageListViewModel : ObservableObject
 
     public IReadOnlyList<ImageListItem> Items { get; }
 
-    public ICollectionView ItemsView => _view;
+    public ObservableCollection<ImageListItem> ItemsView { get; } = [];
 
     public int CurrentIndex { get; }
 
@@ -141,14 +136,26 @@ public sealed partial class ImageListViewModel : ObservableObject
 
     private void ApplySort()
     {
-        _view.CustomSort = new ItemComparer(SortColumn, SortAscending);
+        var selected = SelectedItem;
+        var sorted = Items.ToList();
+        sorted.Sort(new ItemComparer(SortColumn, SortAscending));
+        ItemsView.Clear();
+        foreach (var item in sorted)
+        {
+            ItemsView.Add(item);
+        }
+
+        if (selected is not null)
+        {
+            SelectedItem = selected;
+        }
     }
 
-    private sealed class ItemComparer(ImageListSortColumn column, bool ascending) : IComparer
+    private sealed class ItemComparer(ImageListSortColumn column, bool ascending) : IComparer<ImageListItem>
     {
-        public int Compare(object? x, object? y)
+        public int Compare(ImageListItem? a, ImageListItem? b)
         {
-            if (x is not ImageListItem a || y is not ImageListItem b)
+            if (a is null || b is null)
             {
                 return 0;
             }

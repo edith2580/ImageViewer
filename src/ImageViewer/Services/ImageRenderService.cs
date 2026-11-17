@@ -1,35 +1,37 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using ImageMagick;
 using ImageViewer.Models;
 
 namespace ImageViewer.Services;
 
 /// <summary>
-/// 디코딩된 이미지를 화면 표시 크기로 변환하고 필터 · 회전 · 반전을 적용한 뒤 WPF BitmapSource 로 만든다.
+/// 디코딩된 이미지를 화면 표시 크기로 변환하고 필터 · 회전 · 반전을 적용한 뒤 Avalonia Bitmap 으로 만든다.
 /// 결과는 (이미지, 크기, 필터, 변환) 단위로 LRU 캐시한다. 모든 처리는 UI 스레드 밖에서 수행한다.
 /// </summary>
 public sealed class ImageRenderService(ImageFilterService filterService)
 {
     private readonly record struct RenderKey(string ImageKey, uint Width, uint Height, ImageFilter Filter, ImageTransform Transform);
 
-    private readonly LruCache<RenderKey, BitmapSource> _cache = new(
+    private readonly LruCache<RenderKey, Bitmap> _cache = new(
         maxCount: 16,
         maxCost: 384L * 1024 * 1024,
-        costOf: b => (long)b.PixelWidth * b.PixelHeight * 4);
+        costOf: b => (long)b.PixelSize.Width * b.PixelSize.Height * 4);
 
     // 화면에 바로 보일 렌더링(전경)과 미리 읽기(백그라운드)는 서로 기다리지 않도록 대기열을 나눈다.
     // 전경은 2개까지 동시에 처리해, 빠르게 넘길 때 이미 지나간 이미지의 렌더링이 새 이미지를 막지 않게 한다.
     private readonly PriorityGate _foregroundGate = new(capacity: 2, burstCapacity: 4);
     private readonly SemaphoreSlim _backgroundGate = new(2, 2);
-    private readonly SharedWork<RenderKey, BitmapSource> _renders = new();
+    private readonly SharedWork<RenderKey, Bitmap> _renders = new();
 
     /// <summary>
     /// 정지 이미지를 렌더링한다. <paramref name="width"/> · <paramref name="height"/> 는 회전 후(화면 기준) 크기.
     /// 같은 렌더링이 진행 중이면(미리 읽기 등) 그 결과를 함께 기다린다.
     /// </summary>
     /// <param name="background">미리 읽기 등 화면에 바로 필요하지 않은 작업.</param>
-    public Task<BitmapSource> RenderAsync(
+    public Task<Bitmap> RenderAsync(
         DecodedImage image,
         uint width,
         uint height,
@@ -47,7 +49,7 @@ public sealed class ImageRenderService(ImageFilterService filterService)
         return _renders.RunAsync(key, () => RenderCoreAsync(image, key, background, cancellationToken), cancellationToken);
     }
 
-    private async Task<BitmapSource> RenderCoreAsync(DecodedImage image, RenderKey key, bool background, CancellationToken cancellationToken)
+    private async Task<Bitmap> RenderCoreAsync(DecodedImage image, RenderKey key, bool background, CancellationToken cancellationToken)
     {
         // 전경 작업은 이미 지나간 이미지의 작업이 자리를 막고 있으면 넘어서 바로 시작한다 (PriorityGate).
         var slot = background
@@ -78,7 +80,7 @@ public sealed class ImageRenderService(ImageFilterService filterService)
                 var displayScale = work.Width > 0 ? (double)targetW / work.Width : 1.0;
                 filterService.Apply(work, key.Filter, displayScale);
                 key.Transform.Apply(work);
-                return ToBitmapSource(work);
+                return ToBitmap(work);
             }).ConfigureAwait(false);
 
             _cache.Add(key, bitmap);
@@ -122,10 +124,10 @@ public sealed class ImageRenderService(ImageFilterService filterService)
     }
 
     /// <summary>
-    /// MagickImage 의 픽셀을 BGRA 8bit 배열로 복사해 고정(Freeze)된 BitmapSource 를 만든다.
+    /// MagickImage 의 픽셀을 BGRA 8bit 배열로 복사해 Avalonia Bitmap 을 만든다.
     /// 반환된 비트맵은 자체 버퍼를 가지므로 MagickImage 를 해제해도 안전하다.
     /// </summary>
-    public static BitmapSource ToBitmapSource(MagickImage image)
+    public static Bitmap ToBitmap(MagickImage image)
     {
         var width = (int)image.Width;
         var height = (int)image.Height;
@@ -133,8 +135,27 @@ public sealed class ImageRenderService(ImageFilterService filterService)
         var bytes = pixels.ToByteArray(PixelMapping.BGRA)
                     ?? throw new InvalidOperationException("픽셀 데이터를 읽을 수 없습니다.");
 
-        var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, bytes, width * 4);
-        bitmap.Freeze();
+        var bitmap = new WriteableBitmap(
+            new PixelSize(width, height),
+            new Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Unpremul);
+        using (var fb = bitmap.Lock())
+        {
+            var srcStride = width * 4;
+            if (fb.RowBytes == srcStride)
+            {
+                Marshal.Copy(bytes, 0, fb.Address, bytes.Length);
+            }
+            else
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    Marshal.Copy(bytes, y * srcStride, fb.Address + y * fb.RowBytes, srcStride);
+                }
+            }
+        }
+
         return bitmap;
     }
 }

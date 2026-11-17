@@ -1,4 +1,5 @@
-using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
+using Avalonia.Media.Imaging;
 using ImageMagick;
 using ImageViewer.Models;
 using ImageViewer.Services;
@@ -29,10 +30,17 @@ public class AnimationPlaybackTests
     private static AnimationSource Source(byte[] data, string format = "WEBP") =>
         AnimationSource.TryCreate(data, format) ?? throw new InvalidOperationException("애니메이션이 아님");
 
-    private static byte[] Pixels(BitmapSource bitmap)
+    private static byte[] Pixels(Bitmap bitmap)
     {
-        var bytes = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
-        bitmap.CopyPixels(bytes, bitmap.PixelWidth * 4, 0);
+        var wb = (WriteableBitmap)bitmap;
+        using var fb = wb.Lock();
+        var stride = wb.PixelSize.Width * 4;
+        var bytes = new byte[stride * wb.PixelSize.Height];
+        for (var y = 0; y < wb.PixelSize.Height; y++)
+        {
+            Marshal.Copy(fb.Address + y * fb.RowBytes, bytes, y * stride, stride);
+        }
+
         return bytes;
     }
 
@@ -58,7 +66,7 @@ public class AnimationPlaybackTests
 
         using var playback = new AnimationPlayback(decoded.Animation!, ImageTransform.Identity);
         var last = await playback.WaitForFrameAsync(99, CancellationToken.None).WaitAsync(Timeout);
-        Assert.Equal(400, last.PixelWidth);
+        Assert.Equal(400, last.PixelSize.Width);
         decoded.Release();
     }
 
@@ -103,7 +111,7 @@ public class AnimationPlaybackTests
         for (var i = 0; i < expected.Count; i++)
         {
             var frame = await playback.WaitForFrameAsync(i, CancellationToken.None).WaitAsync(Timeout);
-            Assert.Equal(40, frame.PixelWidth);
+            Assert.Equal(40, frame.PixelSize.Width);
             var actual = Pixels(frame);
             using var pixels = expected[i].GetPixels();
             var reference = pixels.ToByteArray(PixelMapping.BGRA)!;
@@ -147,13 +155,13 @@ public class AnimationPlaybackTests
         var source = Source(CreateWebP(3, 200, 100));
         using var rotated = new AnimationPlayback(source, ImageTransform.Identity.RotateClockwise());
         var frame = await rotated.WaitForFrameAsync(1, CancellationToken.None).WaitAsync(Timeout);
-        Assert.Equal(100, frame.PixelWidth);
-        Assert.Equal(200, frame.PixelHeight);
+        Assert.Equal(100, frame.PixelSize.Width);
+        Assert.Equal(200, frame.PixelSize.Height);
 
         using var half = new AnimationPlayback(source, ImageTransform.Identity, scale: 0.5);
         var small = await half.WaitForFrameAsync(2, CancellationToken.None).WaitAsync(Timeout);
-        Assert.Equal(100, small.PixelWidth);
-        Assert.Equal(50, small.PixelHeight);
+        Assert.Equal(100, small.PixelSize.Width);
+        Assert.Equal(50, small.PixelSize.Height);
         Assert.Equal(0.5, half.Scale, 2);
     }
 

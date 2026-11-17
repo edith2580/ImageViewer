@@ -1,5 +1,6 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using ImageMagick;
 using ImageViewer.Models;
 using SkiaSharp;
@@ -122,7 +123,7 @@ public sealed class AnimationPlayback : IDisposable
     private readonly ImageTransform _transform;
     private readonly int _frameWidth;
     private readonly int _frameHeight;
-    private readonly BitmapSource?[] _frames;
+    private readonly Bitmap?[] _frames;
     private readonly int _window;
     private readonly Lock _lock = new();
     private readonly CancellationTokenSource _cts = new();
@@ -137,7 +138,7 @@ public sealed class AnimationPlayback : IDisposable
     {
         _source = source;
         _transform = transform;
-        _frames = new BitmapSource?[source.FrameCount];
+        _frames = new Bitmap?[source.FrameCount];
 
         using (var codec = source.OpenCodec())
         {
@@ -186,7 +187,7 @@ public sealed class AnimationPlayback : IDisposable
     }
 
     /// <summary>프레임이 준비되었으면 반환한다. 아직 디코딩 전이거나 이미 버렸으면 null.</summary>
-    public BitmapSource? TryGetFrame(int index)
+    public Bitmap? TryGetFrame(int index)
     {
         lock (_lock)
         {
@@ -215,7 +216,7 @@ public sealed class AnimationPlayback : IDisposable
     }
 
     /// <summary>프레임이 준비될 때까지 기다린다.</summary>
-    public async Task<BitmapSource> WaitForFrameAsync(int index, CancellationToken cancellationToken)
+    public async Task<Bitmap> WaitForFrameAsync(int index, CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -308,7 +309,7 @@ public sealed class AnimationPlayback : IDisposable
                 }
 
                 held = next;
-                var bitmap = ToBitmapSource(canvas, _transform);
+                var bitmap = ToBitmap(canvas, _transform);
 
                 TaskCompletionSource signal;
                 lock (_lock)
@@ -369,12 +370,12 @@ public sealed class AnimationPlayback : IDisposable
         }
     }
 
-    /// <summary>합성된 캔버스에 회전 · 반전(시계 방향 회전 후 좌우 반전)을 적용해 고정 비트맵으로 만든다.</summary>
-    private static BitmapSource ToBitmapSource(SKBitmap canvas, ImageTransform transform)
+    /// <summary>합성된 캔버스에 회전 · 반전(시계 방향 회전 후 좌우 반전)을 적용해 Avalonia 비트맵으로 만든다.</summary>
+    private static Bitmap ToBitmap(SKBitmap canvas, ImageTransform transform)
     {
         if (transform.IsIdentity)
         {
-            return Freeze(canvas);
+            return ToAvaloniaBitmap(canvas);
         }
 
         var (width, height) = transform.SwapsDimensions ? (canvas.Height, canvas.Width) : (canvas.Width, canvas.Height);
@@ -393,15 +394,34 @@ public sealed class AnimationPlayback : IDisposable
             surface.DrawBitmap(canvas, 0, 0);
         }
 
-        return Freeze(target);
+        return ToAvaloniaBitmap(target);
     }
 
-    private static BitmapSource Freeze(SKBitmap bitmap)
+    private static Bitmap ToAvaloniaBitmap(SKBitmap bitmap)
     {
-        var result = BitmapSource.Create(
-            bitmap.Width, bitmap.Height, 96, 96, PixelFormats.Pbgra32, null,
-            bitmap.GetPixels(), bitmap.ByteCount, bitmap.RowBytes);
-        result.Freeze();
+        var result = new WriteableBitmap(
+            new PixelSize(bitmap.Width, bitmap.Height),
+            new Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul);
+        using (var fb = result.Lock())
+        {
+            var srcPtr = bitmap.GetPixels();
+            var srcRowBytes = bitmap.RowBytes;
+            var copyBytes = Math.Min(srcRowBytes, fb.RowBytes);
+            unsafe
+            {
+                for (var y = 0; y < bitmap.Height; y++)
+                {
+                    Buffer.MemoryCopy(
+                        (void*)(srcPtr + y * srcRowBytes),
+                        (void*)(fb.Address + y * fb.RowBytes),
+                        fb.RowBytes,
+                        copyBytes);
+                }
+            }
+        }
+
         return result;
     }
 

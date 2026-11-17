@@ -1,9 +1,9 @@
 # ImageViewer
 
-윈도우용 이미지 뷰어. 일반 폴더와 ZIP 아카이브 내부의 이미지를 압축 해제 없이 빠르게 탐색한다.
+크로스 플랫폼 이미지 뷰어. 일반 폴더와 ZIP 아카이브 내부의 이미지를 압축 해제 없이 빠르게 탐색한다.
 
-- 플랫폼: Windows 10 / 11
-- 기술 스택: C# / .NET 10 / WPF (MVVM) / Magick.NET (Q8, OpenMP x64) / SkiaSharp (GIF · WebP 애니메이션) / SharpCompress
+- 플랫폼: Windows 10 / 11, macOS, Linux
+- 기술 스택: C# / .NET 10 / Avalonia UI (MVVM) / Magick.NET (Q8, win-x64 OpenMP · 타 플랫폼 AnyCPU) / SkiaSharp (GIF · WebP 애니메이션) / SharpCompress
 
 ## 주요 기능
 
@@ -40,6 +40,7 @@
 | `                     | 상단 · 하단 바 고정(Pin) 일괄 전환                                  |
 | ← / ↑ , → / ↓         | 이전 / 다음 이미지                                                  |
 | Home / End            | 처음 / 마지막 이미지                                                |
+| [ / ]                 | 이전 / 다음 폴더 또는 ZIP 파일 (열린 파일이 없으면 열기 대화상자)   |
 | PgUp / PgDn           | 이전 / 다음 페이지 (다중 페이지 TIFF, 그 밖에는 이전 / 다음 이미지) |
 | R / L                 | 시계 / 반시계 방향 90° 회전                                         |
 | H / V                 | 좌우 / 상하 반전                                                    |
@@ -65,6 +66,8 @@ dotnet test ImageViewer.sln
 
 ## 배포
 
+### Windows (설치 프로그램 · 포터블)
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\publish.ps1
 ```
@@ -78,6 +81,31 @@ powershell -ExecutionPolicy Bypass -File build\publish.ps1
   사용자 설정(`%LOCALAPPDATA%\ImageViewer`)은 남긴다.
 - 포터블 단일 실행 파일 `ImageViewer-<버전>-portable.exe`, Windows Installer 패키지 `ImageViewer-<버전>.msi` (`src/ImageViewer.Installer/ImageViewer.wxs`, WiX Toolset v5), 그리고 배포 파일들의 확인값 `SHA256SUMS.txt` 도 함께 만든다.
 - GitHub Actions (`.github/workflows/release.yml`): `v*.*.*` 태그를 푸시하거나 Actions 탭에서 수동 실행(`workflow_dispatch`)하면 테스트를 실행한 뒤 무설치(`-portable.exe`), 설치 파일(`-setup.exe`), MSI(`.msi`), `SHA256SUMS.txt` 를 자동으로 빌드해 GitHub Release 에 배포한다.
+
+### 크로스 플랫폼 빌드 · 배포 (Windows / macOS / Linux)
+
+`net10.0` 타겟과 `Magick.NET-Q8-AnyCPU`를 사용하므로 Windows에서도 macOS / Linux용 실행 파일을 크로스 컴파일할 수 있다 (`win-x64` 빌드 시에는 자동으로 OpenMP x64 빌드가 선택된다).
+
+```bash
+# Windows (x64)
+dotnet publish src/ImageViewer/ImageViewer.csproj -c Release -r win-x64 --self-contained -o artifacts/publish/win-x64
+
+# macOS (Apple Silicon)
+dotnet publish src/ImageViewer/ImageViewer.csproj -c Release -r osx-arm64 --self-contained -o artifacts/publish/osx-arm64
+
+# macOS (Intel)
+dotnet publish src/ImageViewer/ImageViewer.csproj -c Release -r osx-x64 --self-contained -o artifacts/publish/osx-x64
+
+# Linux (x64)
+dotnet publish src/ImageViewer/ImageViewer.csproj -c Release -r linux-x64 --self-contained -o artifacts/publish/linux-x64
+
+# Linux (ARM64)
+dotnet publish src/ImageViewer/ImageViewer.csproj -c Release -r linux-arm64 --self-contained -o artifacts/publish/linux-arm64
+```
+
+- macOS에서 실행 권한이 필요하면 `chmod +x artifacts/publish/osx-arm64/ImageViewer` 후 실행한다.
+- 단일 실행 파일로 묶으려면 위 명령에 `-p:PublishSingleFile=true` 를 추가한다.
+- 탐색기 우클릭 메뉴 · 기본 앱 등록 · 자동 설치 업데이트는 Windows 전용 기능으로, macOS / Linux 에서는 자동으로 비활성화된다.
 
 ## 자동 업데이트
 
@@ -195,7 +223,7 @@ GitHub 저장소(`ImageViewer.csproj` 의 `UpdateRepository`, 현재 `edith2580/
 ## 프로젝트 구조
 
 ```text
-src/ImageViewer/            WPF 앱 (Models, ViewModels, Views, Services, Helpers)
+src/ImageViewer/            Avalonia UI 앱 (Models, ViewModels, Views, Services, Helpers)
   Services/ImageSources/    IImageSource, FolderImageSource, ZipImageSource
   Services/Updates/         UpdateService (릴리스 확인 · 다운로드 · SHA-256), UpdateInstaller (설치 / 포터블 교체)
 src/ImageViewer.Installer/  NSIS 설치 스크립트 (ImageViewer.nsi), WiX MSI 스크립트 (ImageViewer.wxs)

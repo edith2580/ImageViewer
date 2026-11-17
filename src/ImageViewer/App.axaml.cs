@@ -1,5 +1,8 @@
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using ImageMagick;
 using ImageViewer.Helpers;
 using ImageViewer.Services;
@@ -18,53 +21,63 @@ public partial class App : Application
     private ILogger<App>? _logger;
     private readonly AppLifetime _lifetime = new();
 
-    protected override void OnStartup(StartupEventArgs e)
+    public override void Initialize()
     {
-        base.OnStartup(e);
-
-        var options = CommandLineHelper.Parse(e.Args);
-
-        // 설치 프로그램에서 사용하는 컨텍스트 메뉴 등록/해제 모드
-        if (options.RegisterShell || options.UnregisterShell)
-        {
-            var exitCode = RunShellCommand(options);
-            Shutdown(exitCode);
-            return;
-        }
-
-        _services = ConfigureServices();
-        _logger = _services.GetRequiredService<ILogger<App>>();
-        RegisterExceptionHandlers();
-        ConfigureMagick();
-
-        _services.GetRequiredService<SettingsService>().Load();
-
-        // 포터블 업데이트로 남은 이전 실행 파일(.old) 정리
-        _ = UpdateInstaller.CleanupLeftoversAsync(UpdateInstaller.CurrentExePath);
-
-        var window = _services.GetRequiredService<MainWindow>();
-        MainWindow = window;
-        window.Show();
-        _logger.LogInformation("ImageViewer 시작 (Magick.NET {Version})", MagickNET.Version);
-
-        if (options.Error is not null)
-        {
-            MessageBox.Show(window, options.Error, "ImageViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        else if (options.Path is not null)
-        {
-            _ = window.ViewModel.OpenPathAsync(options.Path);
-        }
-
-        // 새 버전 자동 확인 (하루 한 번, 시작 뒤 잠시 기다렸다가)
-        _ = _services.GetRequiredService<UpdateViewModel>().AutoCheckAsync(TimeSpan.FromSeconds(5));
+        AvaloniaXamlLoader.Load(this);
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    public override void OnFrameworkInitializationCompleted()
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var args = desktop.Args ?? [];
+            var options = CommandLineHelper.Parse(args);
+
+            // 설치 프로그램에서 사용하는 컨텍스트 메뉴 등록/해제 모드
+            if (options.RegisterShell || options.UnregisterShell)
+            {
+                var exitCode = RunShellCommand(options);
+                desktop.Shutdown(exitCode);
+                return;
+            }
+
+            _services = ConfigureServices();
+            _logger = _services.GetRequiredService<ILogger<App>>();
+            RegisterExceptionHandlers();
+            ConfigureMagick();
+
+            _services.GetRequiredService<SettingsService>().Load();
+
+            // 포터블 업데이트로 남은 이전 실행 파일(.old) 정리
+            _ = UpdateInstaller.CleanupLeftoversAsync(UpdateInstaller.CurrentExePath);
+
+            var window = _services.GetRequiredService<MainWindow>();
+            desktop.MainWindow = window;
+            desktop.Exit += OnExit;
+            window.Show();
+            _logger.LogInformation("ImageViewer 시작 (Magick.NET {Version})", MagickNET.Version);
+
+            if (options.Error is not null)
+            {
+                _ = MessageBoxWindow.ShowAsync(window, options.Error, "ImageViewer", isYesNo: false);
+            }
+            else if (options.Path is not null)
+            {
+                _ = window.ViewModel.OpenPathAsync(options.Path);
+            }
+
+            // 새 버전 자동 확인 (하루 한 번, 시작 뒤 잠시 기다렸다가)
+            _ = _services.GetRequiredService<UpdateViewModel>().AutoCheckAsync(TimeSpan.FromSeconds(5));
+        }
+
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private void OnExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         _services?.Dispose();
         _lifetime.RunPending(_logger);
-        base.OnExit(e);
     }
 
     private ServiceProvider ConfigureServices()
@@ -111,7 +124,7 @@ public partial class App : Application
 
     private void RegisterExceptionHandlers()
     {
-        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        Dispatcher.UIThread.UnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
             _logger?.LogError(args.Exception, "처리되지 않은 비동기 작업 예외");
@@ -126,19 +139,19 @@ public partial class App : Application
         };
     }
 
-    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    private void OnDispatcherUnhandledException(object? sender, DispatcherUnhandledExceptionEventArgs e)
     {
         // 개별 이미지 오류 등으로 프로그램 전체가 종료되지 않도록 한다.
         _logger?.LogError(e.Exception, "UI 스레드 예외");
         e.Handled = true;
         try
         {
-            MessageBox.Show(
-                MainWindow,
+            var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            _ = MessageBoxWindow.ShowAsync(
+                owner,
                 "작업 중 오류가 발생했습니다.\n" + e.Exception.Message,
                 "ImageViewer",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                isYesNo: false);
         }
         catch (Exception)
         {

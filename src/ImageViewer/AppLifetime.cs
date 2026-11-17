@@ -1,5 +1,7 @@
 using System.Diagnostics;
-using System.Windows;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using ImageViewer.Services;
 using Microsoft.Extensions.Logging;
 
@@ -16,20 +18,20 @@ internal sealed class AppLifetime : IAppLifetime
     public void ExitAndRun(ProcessStartInfo afterExit)
     {
         _pending = afterExit;
-        var app = Application.Current;
-        if (app?.MainWindow is not { } main)
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop ||
+            desktop.MainWindow is not { } main)
         {
-            app?.Shutdown();
+            (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
             return;
         }
 
         // 정보 창(모달)에서 [업데이트]를 누른 경우: 대화 상자를 먼저 닫고, 그 루프가 끝난 뒤 메인 창을 닫는다.
-        foreach (var window in app.Windows.OfType<Window>().Where(w => !ReferenceEquals(w, main)).ToList())
+        foreach (var window in desktop.Windows.Where(w => !ReferenceEquals(w, main)).ToList())
         {
             window.Close();
         }
 
-        main.Dispatcher.BeginInvoke(main.Close);
+        Dispatcher.UIThread.Post(main.Close);
     }
 
     public void RunPending(ILogger? logger)

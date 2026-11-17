@@ -1,0 +1,129 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:services="clr-namespace:ImageViewer.Services"
+        xmlns:vm="clr-namespace:ImageViewer.ViewModels"
+        x:Class="ImageViewer.Views.AboutWindow"
+        x:DataType="services:AboutInfo"
+        Title="ImageViewer 정보"
+        Icon="avares://ImageViewer/Resources/ImageViewer.ico"
+        Width="680" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Window.Styles>
+        <Style Selector="TextBlock.Muted">
+            <Setter Property="Foreground" Value="#FF555555" />
+        </Style>
+        <Style Selector="TextBlock.Cell">
+            <Setter Property="Margin" Value="0,3,12,3" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.GroupCard">
+            <Setter Property="BorderBrush" Value="#FFD0D0D6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+        <Style Selector="TextBlock.GroupHeader">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#FF333333" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="16" Spacing="10">
+        <DockPanel>
+            <Image Source="avares://ImageViewer/Resources/ImageViewer.ico" Width="48" Height="48" Margin="0,0,14,0"
+                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock FontSize="20" FontWeight="SemiBold">
+                    <Run Text="{Binding ProductName, Mode=OneWay}" />
+                    <Run Text=" " />
+                    <Run Text="{Binding Version, Mode=OneWay}" FontWeight="Normal" Foreground="#FF555555" />
+                </TextBlock>
+                <TextBlock Text="{Binding Description}" Classes="Muted" Margin="0,2,0,0" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border x:Name="UpdateGroup" Classes="GroupCard" x:DataType="vm:UpdateViewModel">
+            <StackPanel>
+                <TextBlock Text="업데이트" Classes="GroupHeader" />
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0" Spacing="6">
+                        <Button Content="{Binding InstallButtonText}" MinWidth="96" Height="26" Padding="10,0"
+                                Command="{Binding InstallCommand}"
+                                IsVisible="{Binding CanInstall}" />
+                        <Button Content="업데이트 확인" MinWidth="96" Height="26" Padding="10,0"
+                                Command="{Binding CheckNowCommand}" />
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+                        <TextBlock Classes="Muted" Margin="0,2,0,0" FontSize="11">
+                            <Run Text="설치 방식: " /><Run Text="{Binding KindText, Mode=OneWay}" />
+                        </TextBlock>
+                        <ProgressBar Height="4" Margin="0,6,0,0" Minimum="0" Maximum="100" Value="{Binding Progress, Mode=OneWay}"
+                                     IsVisible="{Binding IsDownloading}" />
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="사용한 라이브러리" Classes="GroupHeader" />
+                <ItemsControl ItemsSource="{Binding Libraries}" Grid.IsSharedSizeScope="True">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type services:LibraryInfo}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Name" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Version" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="License" />
+                                </Grid.ColumnDefinitions>
+                                <HyperlinkButton Content="{Binding Name}" NavigateUri="{Binding Url}"
+                                                 Padding="0" Margin="0,3,12,3" VerticalAlignment="Center"
+                                                 ToolTip.Tip="{Binding Url}" />
+                                <TextBlock Grid.Column="1" Classes="Cell" Text="{Binding Version}" />
+                                <TextBlock Grid.Column="2" Classes="Cell" Text="{Binding Purpose}"
+                                           Foreground="#FF555555" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Purpose}" />
+                                <TextBlock Grid.Column="3" Classes="Cell" Text="{Binding License}"
+                                           Foreground="#FF555555" Margin="0,3,0,3" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="실행 환경" Classes="GroupHeader" />
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Classes="Cell" Text="런타임" />
+                    <TextBlock Grid.Column="1" Classes="Cell" Text="{Binding Runtime}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Classes="Cell" Text="운영체제" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="Cell" Text="{Binding OperatingSystem}" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <DockPanel Margin="0,2,0,0">
+            <Button Content="정보 복사" Width="96" Height="28" Click="OnCopy" ToolTip.Tip="버전 정보를 클립보드에 복사합니다" />
+            <Button x:Name="ProjectButton" Width="120" Height="28" Margin="6,0,0,0" Click="OnOpenProject"
+                    ToolTip.Tip="{Binding ProjectUrl}"
+                    IsVisible="{Binding ProjectUrl, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center"
+                               Margin="0,1,6,0" />
+                    <TextBlock Text="GitHub 페이지" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <TextBlock x:Name="CopiedText" Text="복사했습니다." Classes="Muted" Margin="10,0,0,0"
+                       VerticalAlignment="Center" IsVisible="False" />
+            <Button DockPanel.Dock="Right" Content="닫기" Width="84" Height="28" IsDefault="True" IsCancel="True"
+                    HorizontalAlignment="Right" Click="OnClose" />
+        </DockPanel>
+    </StackPanel>
+</Window>

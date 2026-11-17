@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ImageViewer.Views.MessageBoxWindow"
+        Icon="avares://ImageViewer/Resources/ImageViewer.ico"
+        MinWidth="320" MaxWidth="620"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <StackPanel Margin="20,16">
+        <TextBlock x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   LineHeight="20"
+                   Margin="0,0,0,18" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="PrimaryButton" Width="84" Height="28" IsDefault="True" Click="OnPrimaryClick" />
+            <Button x:Name="SecondaryButton" Content="아니오" Width="84" Height="28" IsCancel="True" IsVisible="False" Click="OnSecondaryClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using System.Windows;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
+using Avalonia.Controls.Primitives;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ImageViewer.Helpers;
@@ -84,9 +84,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             update.RelaunchPathProvider = () => RelaunchPath;
         }
         _logger = logger;
-        _dispatcher = Dispatcher.CurrentDispatcher;
+        _dispatcher = Dispatcher.UIThread;
 
-        _renderDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        _renderDebounce = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(120),
         };
@@ -96,7 +96,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _ = RenderCurrentAsync();
         };
 
-        _osdTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        _osdTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(1.6),
         };
@@ -107,7 +107,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         };
 
         // 짧은 로딩에는 표시하지 않아 깜박임을 줄인다.
-        _loadingIndicatorTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        _loadingIndicatorTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(500),
         };
@@ -144,7 +144,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ImageInfo? _currentImage;
 
     [ObservableProperty]
-    private BitmapSource? _currentBitmap;
+    private Bitmap? _currentBitmap;
 
     [ObservableProperty]
     private double _displayWidth;
@@ -341,10 +341,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public double ThumbnailSize => Settings.Thumbnail.Size;
 
     /// <summary>하단 썸네일 목록의 가로 스크롤바 (설정 &gt; 썸네일). 켜면 넘칠 때만 표시.</summary>
-    public System.Windows.Controls.ScrollBarVisibility ThumbnailScrollBarVisibility =>
+    public ScrollBarVisibility ThumbnailScrollBarVisibility =>
         Settings.Thumbnail.ShowScrollBar
-            ? System.Windows.Controls.ScrollBarVisibility.Auto
-            : System.Windows.Controls.ScrollBarVisibility.Hidden;
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Hidden;
 
     public ViewerBackground Background => Settings.Display.Background;
 
@@ -923,7 +923,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var pixelSize = (uint)Math.Clamp(Math.Round(Settings.Thumbnail.Size * _dpiScale), 32, 512);
         _thumbnails.Request(source, item.Info, pixelSize, (bitmap, completed) =>
         {
-            _dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            _dispatcher.Post(() =>
             {
                 if (!ReferenceEquals(source, _source))
                 {
@@ -948,7 +948,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     _loadedThumbnails.RemoveFirst();
                     oldest.Value.ReleaseThumbnail();
                 }
-            });
+            }, DispatcherPriority.Background);
         });
     }
 
@@ -1169,7 +1169,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void Exit() => Application.Current?.MainWindow?.Close();
+    private void Exit() =>
+        (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow?.Close();
 
     private void ApplySettingsToServices()
     {

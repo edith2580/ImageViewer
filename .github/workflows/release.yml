@@ -15,20 +15,16 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Release (Portable / EXE / MSI)
-    runs-on: windows-latest
+  prepare:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup .NET 10 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Determine release version
         id: meta
@@ -42,22 +38,6 @@ jobs:
           if ($tag) {
             $version = $tag -replace '^[vV]', ''
             Write-Host "Using version from tag: $version ($tag)"
-
-            # 태그 버전과 프로젝트/매니페스트/NSIS 버전 동기화
-            $csprojPath = "src/ImageViewer/ImageViewer.csproj"
-            $csproj = [IO.File]::ReadAllText($csprojPath, [Text.Encoding]::UTF8)
-            $csproj = $csproj -replace '<Version>[^<]+</Version>', "<Version>$version</Version>"
-            [IO.File]::WriteAllText($csprojPath, $csproj, (New-Object Text.UTF8Encoding $false))
-
-            $manifestPath = "src/ImageViewer/app.manifest"
-            $manifest = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8)
-            $manifest = $manifest -replace 'assemblyIdentity version="[^"]+"', "assemblyIdentity version=`"$version.0`""
-            [IO.File]::WriteAllText($manifestPath, $manifest, (New-Object Text.UTF8Encoding $false))
-
-            $nsiPath = "src/ImageViewer.Installer/ImageViewer.nsi"
-            $nsi = [IO.File]::ReadAllText($nsiPath, [Text.Encoding]::UTF8)
-            $nsi = $nsi -replace '!define VERSION "[^"]+"', "!define VERSION `"$version`""
-            [IO.File]::WriteAllText($nsiPath, $nsi, (New-Object Text.UTF8Encoding $true))
           } else {
             [xml]$csprojXml = Get-Content "src/ImageViewer/ImageViewer.csproj" -Encoding UTF8
             $version = ($csprojXml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
@@ -66,6 +46,43 @@ jobs:
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+  build-windows:
+    name: Build Windows (Portable / EXE / MSI)
+    needs: prepare
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Sync version
+        if: needs.prepare.outputs.tag != ''
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+
+          $csprojPath = "src/ImageViewer/ImageViewer.csproj"
+          $csproj = [IO.File]::ReadAllText($csprojPath, [Text.Encoding]::UTF8)
+          $csproj = $csproj -replace '<Version>[^<]+</Version>', "<Version>$version</Version>"
+          [IO.File]::WriteAllText($csprojPath, $csproj, (New-Object Text.UTF8Encoding $false))
+
+          $manifestPath = "src/ImageViewer/app.manifest"
+          $manifest = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8)
+          $manifest = $manifest -replace 'assemblyIdentity version="[^"]+"', "assemblyIdentity version=`"$version.0`""
+          [IO.File]::WriteAllText($manifestPath, $manifest, (New-Object Text.UTF8Encoding $false))
+
+          $nsiPath = "src/ImageViewer.Installer/ImageViewer.nsi"
+          $nsi = [IO.File]::ReadAllText($nsiPath, [Text.Encoding]::UTF8)
+          $nsi = $nsi -replace '!define VERSION "[^"]+"', "!define VERSION `"$version`""
+          [IO.File]::WriteAllText($nsiPath, $nsi, (New-Object Text.UTF8Encoding $true))
 
       - name: Ensure NSIS & WiX Toolset
         shell: pwsh
@@ -80,28 +97,110 @@ jobs:
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File build\publish.ps1
 
-      - name: Upload workflow build artifacts
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ImageViewer-${{ steps.meta.outputs.version }}-installers
+          name: ImageViewer-${{ needs.prepare.outputs.version }}-windows
           path: |
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}-portable.exe
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}-setup.exe
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}.msi
-            artifacts/installer/SHA256SUMS.txt
+            artifacts/installer/ImageViewer-${{ needs.prepare.outputs.version }}-portable.exe
+            artifacts/installer/ImageViewer-${{ needs.prepare.outputs.version }}-setup.exe
+            artifacts/installer/ImageViewer-${{ needs.prepare.outputs.version }}.msi
           if-no-files-found: error
 
+  build-unix:
+    name: Build ${{ matrix.rid }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            os: macos-latest
+            run_tests: true
+          - rid: osx-x64
+            os: macos-latest
+            run_tests: false
+          - rid: linux-x64
+            os: ubuntu-latest
+            run_tests: true
+          - rid: linux-arm64
+            os: ubuntu-latest
+            run_tests: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Sync version
+        if: needs.prepare.outputs.tag != ''
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $csprojPath = "src/ImageViewer/ImageViewer.csproj"
+          $csproj = [IO.File]::ReadAllText($csprojPath, [Text.Encoding]::UTF8)
+          $csproj = $csproj -replace '<Version>[^<]+</Version>', "<Version>$version</Version>"
+          [IO.File]::WriteAllText($csprojPath, $csproj, (New-Object Text.UTF8Encoding $false))
+
+      - name: Run unit tests
+        if: matrix.run_tests
+        run: dotnet test tests/ImageViewer.Tests/ImageViewer.Tests.csproj -c Release
+
+      - name: Publish (${{ matrix.rid }})
+        run: |
+          dotnet publish src/ImageViewer/ImageViewer.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained \
+            -p:PublishSingleFile=true \
+            -o artifacts/publish/${{ matrix.rid }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          mkdir -p artifacts/dist
+          chmod +x artifacts/publish/${{ matrix.rid }}/ImageViewer
+          tar -czf artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz \
+            -C artifacts/publish/${{ matrix.rid }} .
+
+      - name: Upload ${{ matrix.rid }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}
+          path: artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [prepare, build-windows, build-unix]
+    if: needs.prepare.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        shell: bash
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
-        if: steps.meta.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ImageViewer v${{ steps.meta.outputs.version }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ImageViewer v${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           draft: false
           prerelease: false
-          files: |
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}-setup.exe
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}.msi
-            artifacts/installer/ImageViewer-${{ steps.meta.outputs.version }}-portable.exe
-            artifacts/installer/SHA256SUMS.txt
+          files: dist/*

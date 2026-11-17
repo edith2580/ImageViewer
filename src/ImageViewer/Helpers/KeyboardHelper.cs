@@ -1,7 +1,7 @@
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 
 namespace ImageViewer.Helpers;
 
@@ -29,6 +29,8 @@ public enum ShortcutAction
     Last,
     PreviousPage,
     NextPage,
+    PreviousSource,
+    NextSource,
     RotateClockwise,
     RotateCounterClockwise,
     FlipHorizontal,
@@ -38,23 +40,15 @@ public enum ShortcutAction
 
 public static class KeyboardHelper
 {
-    public static ShortcutAction GetAction(Key key, Key systemKey, ModifierKeys modifiers)
+    public static ShortcutAction GetAction(Key key, KeyModifiers modifiers)
     {
-        // Alt + Enter 는 WPF 에서 Key.System + SystemKey.Enter 로 들어온다.
-        if (key == Key.System)
-        {
-            return systemKey is Key.Enter or Key.Return && modifiers.HasFlag(ModifierKeys.Alt)
-                ? ShortcutAction.ToggleFullScreen
-                : ShortcutAction.None;
-        }
-
-        if (modifiers.HasFlag(ModifierKeys.Alt) && key is Key.Enter or Key.Return)
+        if (modifiers.HasFlag(KeyModifiers.Alt) && key is Key.Enter or Key.Return)
         {
             return ShortcutAction.ToggleFullScreen;
         }
 
         // Ctrl/Alt 조합은 메뉴 등 다른 기능에 양보한다.
-        if (modifiers.HasFlag(ModifierKeys.Control) || modifiers.HasFlag(ModifierKeys.Alt))
+        if (modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Alt))
         {
             return ShortcutAction.None;
         }
@@ -67,6 +61,8 @@ public static class KeyboardHelper
             Key.Right or Key.Down => ShortcutAction.Next,
             Key.PageUp => ShortcutAction.PreviousPage,   // 다중 페이지면 페이지, 아니면 이미지 이동
             Key.PageDown => ShortcutAction.NextPage,
+            Key.OemOpenBrackets => ShortcutAction.PreviousSource,
+            Key.OemCloseBrackets => ShortcutAction.NextSource,
             Key.R => ShortcutAction.RotateClockwise,
             Key.L => ShortcutAction.RotateCounterClockwise,
             Key.H => ShortcutAction.FlipHorizontal,
@@ -92,10 +88,14 @@ public static class KeyboardHelper
     /// <summary>
     /// 텍스트 입력이나 값 조절 컨트롤에 포커스가 있으면 메인 단축키를 적용하지 않는다.
     /// </summary>
-    public static bool IsInputControlFocused()
+    public static bool IsInputControlFocused(TopLevel? topLevel)
     {
-        var focused = Keyboard.FocusedElement as DependencyObject;
-        return focused is TextBoxBase or PasswordBox or ComboBox or RangeBase ||
-               (focused is FrameworkElement fe && fe.TemplatedParent is ComboBox);
+        var focused = topLevel?.FocusManager?.GetFocusedElement();
+        if (focused is TextBox or ComboBox or RangeBase)
+        {
+            return true;
+        }
+
+        return focused is Control c && c.FindAncestorOfType<ComboBox>() is not null;
     }
 }

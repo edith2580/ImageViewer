@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Windows.Data;
+using Avalonia.Data.Converters;
 
 namespace ImageViewer.ViewModels;
 
@@ -8,9 +8,6 @@ public sealed class IsCurrentItemConverter : IMultiValueConverter
 {
     public static IsCurrentItemConverter Instance { get; } = new();
 
-    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture) =>
-        values.Length == 2 && values[0] is int a && values[1] is int b && a == b;
-
-    public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture) =>
+        values.Count == 2 && values[0] is int a && values[1] is int b && a == b;
 }

@@ -1,4 +1,4 @@
-using System.Windows.Media.Imaging;
+using Avalonia.Media.Imaging;
 using ImageViewer.Models;
 using ImageViewer.Services.ImageSources;
 using Microsoft.Extensions.Logging;
@@ -29,13 +29,13 @@ public sealed class ThumbnailService
         _logger = logger ?? NullLogger<ThumbnailService>.Instance;
     }
 
-    private sealed record ThumbnailRequest(int Generation, IImageSource Source, ImageInfo Info, uint PixelSize, Action<BitmapSource?, bool> Callback);
+    private sealed record ThumbnailRequest(int Generation, IImageSource Source, ImageInfo Info, uint PixelSize, Action<Bitmap?, bool> Callback);
 
     /// <summary>
     /// 썸네일 생성을 요청한다. 콜백은 백그라운드 스레드에서 (비트맵, 처리 완료 여부)로 호출된다.
     /// 처리 완료 여부가 false 이면 요청이 버려진 것이므로 다시 요청할 수 있다.
     /// </summary>
-    public void Request(IImageSource source, ImageInfo info, uint pixelSize, Action<BitmapSource?, bool> callback)
+    public void Request(IImageSource source, ImageInfo info, uint pixelSize, Action<Bitmap?, bool> callback)
     {
         lock (_lock)
         {
@@ -89,7 +89,7 @@ public sealed class ThumbnailService
                 continue;
             }
 
-            BitmapSource? result = null;
+            Bitmap? result = null;
             try
             {
                 result = Create(request);
@@ -111,7 +111,7 @@ public sealed class ThumbnailService
         }
     }
 
-    private BitmapSource? Create(ThumbnailRequest request)
+    private Bitmap? Create(ThumbnailRequest request)
     {
         if (!request.Info.IsSupported)
         {
@@ -127,7 +127,7 @@ public sealed class ThumbnailService
         using (image)
         {
             image.Thumbnail(new ImageMagick.MagickGeometry(request.PixelSize, request.PixelSize));
-            return ImageRenderService.ToBitmapSource(image);
+            return ImageRenderService.ToBitmap(image);
         }
     }
 }

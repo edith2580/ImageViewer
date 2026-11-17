@@ -49,6 +49,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         new(ViewerBackground.Checkerboard, "체크무늬 (투명 영역 확인)"),
     ];
 
+    public bool IsWindows { get; } = OperatingSystem.IsWindows();
+
     [ObservableProperty] private MouseWheelAction _mouseWheel;
     [ObservableProperty] private ViewerBackground _background;
     [ObservableProperty] private bool _wrapAround;

@@ -72,8 +72,8 @@ public class TransformRenderingTests
         var rotated = ImageTransform.Identity.RotateClockwise();
         var bitmap = await renderer.RenderAsync(decoded, 50, 100, ImageFilter.None, rotated, CancellationToken.None);
 
-        Assert.Equal(50, bitmap.PixelWidth);
-        Assert.Equal(100, bitmap.PixelHeight);
+        Assert.Equal(50, bitmap.PixelSize.Width);
+        Assert.Equal(100, bitmap.PixelSize.Height);
         decoded.Release();
     }
 
@@ -150,8 +150,7 @@ public class MultiFrameTests
         for (var i = 0; i < 3; i++)
         {
             var frame = await playback.WaitForFrameAsync(i, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(30, frame.PixelWidth);
-            Assert.True(frame.IsFrozen);
+            Assert.Equal(30, frame.PixelSize.Width);
         }
 
         decoded.Release();

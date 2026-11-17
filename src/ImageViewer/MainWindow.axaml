@@ -1,0 +1,507 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ImageViewer.ViewModels"
+        xmlns:models="clr-namespace:ImageViewer.Models"
+        x:Class="ImageViewer.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding WindowTitle}"
+        Icon="avares://ImageViewer/Resources/ImageViewer.ico"
+        Width="1280" Height="800" MinWidth="480" MinHeight="320"
+        Background="{StaticResource PanelBackground}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="0"
+        DragDrop.AllowDrop="True">
+
+    <Window.Styles>
+        <Style Selector="Image#DisplayImage.placeholder">
+            <Setter Property="Effect">
+                <BlurEffect Radius="24" />
+            </Setter>
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+
+        <Style Selector="Border#LoadingIndicator[IsVisible=True] Path.Spinner">
+            <Style.Animations>
+                <Animation Duration="0:0:0.9" IterationCount="INFINITE">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="RotateTransform.Angle" Value="0" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="RotateTransform.Angle" Value="360" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <Style Selector="Border.ThumbCard">
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="#FF2A2A2A" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <Style Selector="ListBox.ThumbnailList ListBoxItem:pointerover Border.ThumbCard">
+            <Setter Property="BorderBrush" Value="#FF666666" />
+        </Style>
+        <Style Selector="Border.ThumbCard.current">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#FF203450" />
+        </Style>
+
+        <Style Selector="TextBlock.InfoLabel">
+            <Setter Property="Foreground" Value="#FF9AA3AD" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,1,14,1" />
+        </Style>
+        <Style Selector="TextBlock.InfoLabel.header">
+            <Setter Property="Foreground" Value="#FF7DB4FF" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,8,0,3" />
+        </Style>
+    </Window.Styles>
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+        <KeyBinding Gesture="Ctrl+D0" Command="{Binding ResetZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+Q" Command="{Binding ExitCommand}" />
+    </Window.KeyBindings>
+
+    <Grid x:Name="RootGrid">
+
+        <!-- 이미지 표시 영역: 창 전체를 채우고, 상단 바 · 하단 바는 그 위에 겹쳐 표시한다. -->
+        <Panel x:Name="Viewport"
+               Focusable="True"
+               ClipToBounds="True"
+               Background="{Binding Background, Converter={StaticResource BackgroundToBrush}}">
+            <Panel.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="이전 이미지" InputGesture="Left" Command="{Binding PreviousCommand}" />
+                    <MenuItem Header="다음 이미지" InputGesture="Right" Command="{Binding NextCommand}" />
+                    <MenuItem Header="이미지 목록" InputGesture="Enter" Command="{Binding ShowImageListCommand}" />
+                    <Separator />
+                    <MenuItem Header="원본 크기" InputGesture="D0" ToggleType="CheckBox"
+                              Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.Original}"
+                              IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Original}" />
+                    <MenuItem Header="폭 맞춤" InputGesture="D7" ToggleType="CheckBox"
+                              Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.FitWidth}"
+                              IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=FitWidth}" />
+                    <MenuItem Header="높이 맞춤" InputGesture="D8" ToggleType="CheckBox"
+                              Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.FitHeight}"
+                              IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=FitHeight}" />
+                    <MenuItem Header="꽉 차게 보기" InputGesture="D9" ToggleType="CheckBox"
+                              Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.Fill}"
+                              IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Fill}" />
+                    <Separator />
+                    <MenuItem Header="시계 방향 회전" InputGesture="R" Command="{Binding RotateClockwiseCommand}" />
+                    <MenuItem Header="반시계 방향 회전" InputGesture="L" Command="{Binding RotateCounterClockwiseCommand}" />
+                    <MenuItem Header="좌우 반전" InputGesture="H" Command="{Binding FlipHorizontalCommand}" />
+                    <MenuItem Header="상하 반전" InputGesture="V" Command="{Binding FlipVerticalCommand}" />
+                    <MenuItem Header="이미지 정보" InputGesture="Tab" ToggleType="CheckBox"
+                              Command="{Binding ToggleInfoPanelCommand}"
+                              IsChecked="{Binding IsInfoPanelVisible, Mode=OneWay}" />
+                    <Separator />
+                    <MenuItem Header="슬라이드쇼 재생 / 일시정지" InputGesture="Space" ToggleType="CheckBox"
+                              Command="{Binding ToggleSlideShowCommand}"
+                              IsChecked="{Binding IsSlideShowPlaying, Mode=OneWay}" />
+                    <MenuItem Header="상단 · 하단 바 고정" InputGesture="Oem3" ToggleType="CheckBox"
+                              Command="{Binding ToggleMenusCommand}"
+                              IsChecked="{Binding BothBarsPinned, Mode=OneWay}" />
+                    <MenuItem Header="전체 화면" InputGesture="Alt+Enter" ToggleType="CheckBox"
+                              Command="{Binding ToggleFullScreenCommand}"
+                              IsChecked="{Binding IsFullScreen, Mode=OneWay}" />
+                    <Separator />
+                    <MenuItem Header="종료" InputGesture="Escape" Command="{Binding ExitCommand}" />
+                </ContextMenu>
+            </Panel.ContextMenu>
+
+            <Canvas x:Name="ImageCanvas">
+                <Image x:Name="DisplayImage"
+                       Source="{Binding CurrentBitmap}"
+                       Width="{Binding DisplayWidth}"
+                       Height="{Binding DisplayHeight}"
+                       Stretch="Fill"
+                       RenderOptions.BitmapInterpolationMode="HighQuality"
+                       Classes.placeholder="{Binding IsShowingPlaceholder}" />
+            </Canvas>
+
+            <TextBlock Text="{Binding PlaceholderMessage}"
+                       IsVisible="{Binding PlaceholderMessage, Converter={StaticResource BoolToVisibility}}"
+                       Foreground="{Binding Background, Converter={StaticResource BackgroundToForeground}}"
+                       FontSize="16" TextAlignment="Center" TextWrapping="Wrap" LineHeight="26"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24"
+                       IsHitTestVisible="False" />
+
+            <Border IsVisible="{Binding ErrorMessage, Converter={StaticResource BoolToVisibility}}"
+                    Background="#CC2A1A1A" BorderBrush="#FF8A3A3A" BorderThickness="1" CornerRadius="6"
+                    Padding="24,16" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="640"
+                    IsHitTestVisible="False">
+                <StackPanel>
+                    <TextBlock Text="⚠ 이미지를 표시할 수 없습니다" Foreground="#FFFF9A9A" FontSize="15" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#FFE8E8E8" TextWrapping="Wrap" TextAlignment="Center" />
+                    <TextBlock Text="← → 키로 다른 이미지로 이동할 수 있습니다." Foreground="#FFA0A0A0"
+                               HorizontalAlignment="Center" Margin="0,10,0,0" FontSize="11" />
+                </StackPanel>
+            </Border>
+
+            <!-- 이미지 정보(EXIF) 패널: Tab 으로 여닫는다. -->
+            <Border x:Name="InfoPanel"
+                    IsVisible="{Binding IsInfoPanelVisible}"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,12,0,0"
+                    MaxWidth="380" Padding="14,4,14,10" CornerRadius="10"
+                    Background="#D91B1B1E" BorderBrush="#30FFFFFF" BorderThickness="1"
+                    BoxShadow="0 2 14 0 #66000000"
+                    IsHitTestVisible="False">
+                <ItemsControl ItemsSource="{Binding InfoItems}" Grid.IsSharedSizeScope="True">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:MetadataItem}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="InfoLabel" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Label}" Classes="InfoLabel"
+                                           Classes.header="{Binding IsHeader}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="#FFEDEDED"
+                                           FontSize="12" Margin="0,1" TextWrapping="Wrap"
+                                           IsVisible="{Binding !IsHeader}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- 프레임 · 페이지 정보 -->
+            <Border x:Name="FrameInfo"
+                    IsVisible="{Binding FrameInfoText, Converter={StaticResource BoolToVisibility}}"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14,0,0,14"
+                    Background="#8C000000" CornerRadius="8" Padding="12,6,12,7"
+                    IsHitTestVisible="False">
+                <TextBlock Text="{Binding FrameInfoText}" Foreground="#E6FFFFFF" FontSize="12" LineHeight="19"
+                           FontFeatures="tnum" />
+            </Border>
+
+            <!-- 상태 알림 (OSD) -->
+            <Border IsVisible="{Binding OsdMessage, Converter={StaticResource BoolToVisibility}}"
+                    Background="#C0000000" CornerRadius="4" Padding="14,6"
+                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0"
+                    IsHitTestVisible="False">
+                <TextBlock Text="{Binding OsdMessage}" Foreground="White" FontSize="14" />
+            </Border>
+
+            <!-- 로딩 게이지 -->
+            <Border x:Name="LoadingIndicator"
+                    IsVisible="{Binding IsLoading}"
+                    Width="76" Height="76" CornerRadius="38"
+                    Background="#99000000"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsHitTestVisible="False" ToolTip.Tip="불러오는 중">
+                <Grid Width="44" Height="44">
+                    <Ellipse Stroke="#33FFFFFF" StrokeThickness="4" />
+                    <Path Classes="Spinner"
+                          Stroke="{StaticResource AccentBrush}" StrokeThickness="4"
+                          StrokeLineCap="Round"
+                          RenderTransformOrigin="0.5,0.5"
+                          Data="M 22,2 A 20,20 0 0 1 42,22">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="0" />
+                        </Path.RenderTransform>
+                    </Path>
+                </Grid>
+            </Border>
+        </Panel>
+
+        <!-- 상단 바: 직접 그린 타이틀바 + 아이콘 메뉴바 -->
+        <Border x:Name="TopBar" VerticalAlignment="Top"
+                Background="#E61B1B1E" BorderBrush="#26FFFFFF" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <!-- 타이틀바 -->
+                <Grid x:Name="TitleBarGrid" Height="32" ColumnDefinitions="Auto,*,Auto" Background="Transparent">
+                    <Image Source="avares://ImageViewer/Resources/ImageViewer.ico" Width="16" Height="16" Margin="12,0,10,0"
+                           RenderOptions.BitmapInterpolationMode="HighQuality" VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
+                    <TextBlock Grid.Column="1" Text="{Binding WindowTitle}" Foreground="#FFD8D8D8" FontSize="12"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsHitTestVisible="False" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Classes="CaptionButton" Content="&#xE921;" ToolTip.Tip="최소화" Click="OnMinimizeClick" />
+                        <Button x:Name="MaximizeButton" Classes="CaptionButton" Content="&#xE922;" ToolTip.Tip="최대화" Click="OnMaximizeClick" />
+                        <Button Classes="CloseCaptionButton" Content="&#xE8BB;" ToolTip.Tip="닫기 (Esc)" Click="OnCloseClick" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 메뉴바 -->
+                <Grid Height="38" ColumnDefinitions="*,Auto">
+                    <Menu x:Name="TopMenu" Classes="TopMenu" Padding="6,0,4,4" Background="Transparent">
+                        <Menu.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" />
+                            </ItemsPanelTemplate>
+                        </Menu.ItemsPanel>
+
+                        <MenuItem Grid.Column="0">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE8B7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                               Foreground="#FF7DB4FF" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <AccessText Text="파일(_F)" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem Header="폴더 열기(_D)..." InputGesture="Ctrl+Shift+O" Command="{Binding OpenFolderCommand}" />
+                            <MenuItem Header="파일 / ZIP 열기(_O)..." InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
+                            <Separator />
+                            <MenuItem Header="이전 폴더 / ZIP" InputGesture="OemOpenBrackets" Command="{Binding PreviousSourceCommand}" />
+                            <MenuItem Header="다음 폴더 / ZIP" InputGesture="OemCloseBrackets" Command="{Binding NextSourceCommand}" />
+                            <Separator />
+                            <MenuItem Header="이미지 목록(_L)" InputGesture="Enter" Command="{Binding ShowImageListCommand}" />
+                            <Separator />
+                            <MenuItem Header="종료(_X)" InputGesture="Escape" Command="{Binding ExitCommand}" />
+                        </MenuItem>
+
+                        <MenuItem Grid.Column="2">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE890;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                               Foreground="#FF7DB4FF" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <AccessText Text="보기(_V)" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem Header="원본 크기(_O)" InputGesture="D0" ToggleType="CheckBox"
+                                      Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.Original}"
+                                      IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Original}" />
+                            <MenuItem Header="폭 맞춤(_W)" InputGesture="D7" ToggleType="CheckBox"
+                                      Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.FitWidth}"
+                                      IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=FitWidth}" />
+                            <MenuItem Header="높이 맞춤(_H)" InputGesture="D8" ToggleType="CheckBox"
+                                      Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.FitHeight}"
+                                      IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=FitHeight}" />
+                            <MenuItem Header="꽉 차게 보기(_F)" InputGesture="D9" ToggleType="CheckBox"
+                                      Command="{Binding SetDisplayModeCommand}" CommandParameter="{x:Static models:DisplayMode.Fill}"
+                                      IsChecked="{Binding DisplayMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Fill}" />
+                            <Separator />
+                            <MenuItem Header="확대(_I)" InputGesture="OemPlus" Command="{Binding ZoomInCommand}" />
+                            <MenuItem Header="축소(_U)" InputGesture="OemMinus" Command="{Binding ZoomOutCommand}" />
+                            <MenuItem Header="배율 초기화(_R)" InputGesture="Ctrl+D0" Command="{Binding ResetZoomCommand}" />
+                            <Separator />
+                            <MenuItem Header="시계 방향 회전" InputGesture="R" Command="{Binding RotateClockwiseCommand}" />
+                            <MenuItem Header="반시계 방향 회전" InputGesture="L" Command="{Binding RotateCounterClockwiseCommand}" />
+                            <MenuItem Header="좌우 반전" InputGesture="H" Command="{Binding FlipHorizontalCommand}" />
+                            <MenuItem Header="상하 반전" InputGesture="V" Command="{Binding FlipVerticalCommand}" />
+                            <MenuItem Header="회전 · 반전 초기화" Command="{Binding ResetTransformCommand}" />
+                            <Separator />
+                            <MenuItem Header="이전 페이지" InputGesture="PageUp" Command="{Binding PreviousPageCommand}" />
+                            <MenuItem Header="다음 페이지" InputGesture="PageDown" Command="{Binding NextPageCommand}" />
+                            <MenuItem Header="애니메이션 재생 (GIF / WebP)" ToggleType="CheckBox"
+                                      Command="{Binding TogglePlayAnimationsCommand}"
+                                      IsChecked="{Binding PlayAnimations, Mode=OneWay}" />
+                            <MenuItem Header="이미지 정보" InputGesture="Tab" ToggleType="CheckBox"
+                                      Command="{Binding ToggleInfoPanelCommand}"
+                                      IsChecked="{Binding IsInfoPanelVisible, Mode=OneWay}" />
+                            <Separator />
+                            <MenuItem Header="상단 · 하단 바 고정(_M)" InputGesture="Oem3" ToggleType="CheckBox"
+                                      Command="{Binding ToggleMenusCommand}"
+                                      IsChecked="{Binding BothBarsPinned, Mode=OneWay}" />
+                            <MenuItem Header="상단 바 고정(_A)" ToggleType="CheckBox"
+                                      Command="{Binding ToggleTopBarPinCommand}"
+                                      IsChecked="{Binding TopBarPinned, Mode=OneWay}" />
+                            <MenuItem Header="하단 바 고정(_P)" ToggleType="CheckBox"
+                                      Command="{Binding ToggleBottomBarPinCommand}"
+                                      IsChecked="{Binding BottomBarPinned, Mode=OneWay}" />
+                            <MenuItem Header="썸네일 표시(_T)" ToggleType="CheckBox" IsChecked="{Binding ThumbnailsVisible}" />
+                            <Separator />
+                            <MenuItem Header="전체 화면(_U)" InputGesture="Alt+Enter" ToggleType="CheckBox"
+                                      Command="{Binding ToggleFullScreenCommand}"
+                                      IsChecked="{Binding IsFullScreen, Mode=OneWay}" />
+                        </MenuItem>
+
+                        <MenuItem Grid.Column="3">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE790;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                               Foreground="#FF7DB4FF" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <AccessText Text="필터(_T)" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem Header="필터 없음(_N)" InputGesture="U" ToggleType="CheckBox"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="{x:Static models:ImageFilter.None}"
+                                      IsChecked="{Binding Filter, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=None}" />
+                            <MenuItem Header="부드럽게(_S)" InputGesture="I" ToggleType="CheckBox"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="{x:Static models:ImageFilter.Smooth}"
+                                      IsChecked="{Binding Filter, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Smooth}" />
+                            <MenuItem Header="부드럽게 + 선명하게(_A)" InputGesture="S" ToggleType="CheckBox"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="{x:Static models:ImageFilter.SmoothSharpen}"
+                                      IsChecked="{Binding Filter, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=SmoothSharpen}" />
+                        </MenuItem>
+
+                        <MenuItem Grid.Column="4">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE786;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                               Foreground="#FF7DB4FF" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <AccessText Text="슬라이드쇼(_S)" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem Header="재생 / 일시정지(_P)" InputGesture="Space" ToggleType="CheckBox"
+                                      Command="{Binding ToggleSlideShowCommand}"
+                                      IsChecked="{Binding IsSlideShowPlaying, Mode=OneWay}" />
+                            <Separator />
+                            <MenuItem StaysOpenOnClick="True" Focusable="False">
+                                <MenuItem.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="간격" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <Slider Width="160" Minimum="5" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                SmallChange="1" LargeChange="5" VerticalAlignment="Center"
+                                                Value="{Binding SlideShowInterval}" />
+                                        <TextBlock Text="{Binding SlideShowIntervalText}" Width="36" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center" TextAlignment="Right" />
+                                    </StackPanel>
+                                </MenuItem.Header>
+                            </MenuItem>
+                            <Separator />
+                            <MenuItem Header="순차 재생(_Q)" ToggleType="CheckBox"
+                                      Command="{Binding SetSlideShowModeCommand}" CommandParameter="{x:Static models:SlideShowMode.Sequential}"
+                                      IsChecked="{Binding SlideShowMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Sequential}" />
+                            <MenuItem Header="랜덤 재생(_R)" ToggleType="CheckBox"
+                                      Command="{Binding SetSlideShowModeCommand}" CommandParameter="{x:Static models:SlideShowMode.Random}"
+                                      IsChecked="{Binding SlideShowMode, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=Random}" />
+                            <Separator />
+                            <MenuItem Header="끝나면 처음부터 반복(_L)" ToggleType="CheckBox" IsChecked="{Binding SlideShowRepeat}" />
+                        </MenuItem>
+
+                        <MenuItem Grid.Column="5">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                                               Foreground="#FF7DB4FF" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <AccessText Text="설정(_O)" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem Header="설정(_S)..." Command="{Binding ShowSettingsCommand}" />
+                            <Separator />
+                            <MenuItem Header="단축키 안내(_K)" Click="OnShowShortcuts" />
+                            <MenuItem Header="정보(_A)..." Click="OnShowAbout" />
+                        </MenuItem>
+                    </Menu>
+                    <ToggleButton Grid.Column="1" Classes="PinToggleButton" Margin="0,0,10,4"
+                                  IsChecked="{Binding TopBarPinned}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 하단 버블 바 -->
+        <Border x:Name="BottomBar"
+                VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                Margin="16,0,16,14"
+                Background="#D0202022" BorderBrush="#30FFFFFF" BorderThickness="1"
+                CornerRadius="14" Padding="10,6,10,8"
+                BoxShadow="0 2 18 0 #73000000">
+            <StackPanel>
+                <Grid Grid.IsSharedSizeScope="True">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BottomBarSide" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="BottomBarSide" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
+                        <Button Classes="IconButton" Content="&#xE71F;" ToolTip.Tip="축소 (-)" Command="{Binding ZoomOutCommand}" />
+                        <Button Classes="IconButton" Content="&#xE72C;" ToolTip.Tip="배율 초기화 (Ctrl+0)" Command="{Binding ResetZoomCommand}" />
+                        <Button Classes="IconButton" Content="&#xE8A3;" ToolTip.Tip="확대 (+)" Command="{Binding ZoomInCommand}" />
+                        <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Classes="IconButton" Content="&#xE76B;" ToolTip.Tip="이전 이미지 (←)" Command="{Binding PreviousCommand}" />
+                        <TextBlock Classes="StatusText" Text="{Binding PositionText}" MinWidth="64" TextAlignment="Center" />
+                        <Button Classes="IconButton" Content="&#xE76C;" ToolTip.Tip="다음 이미지 (→)" Command="{Binding NextCommand}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
+                        <Button Classes="IconButton" Content="{Binding SlideShowButtonText}"
+                                ToolTip.Tip="슬라이드쇼 재생 / 일시정지 (Space)" Command="{Binding ToggleSlideShowCommand}" />
+                        <Slider Width="110" Minimum="5" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True"
+                                SmallChange="1" LargeChange="5" VerticalAlignment="Center" Margin="4,0"
+                                Focusable="False" ToolTip.Tip="슬라이드쇼 간격 (5~90초)"
+                                Value="{Binding SlideShowInterval}" />
+                        <TextBlock Classes="StatusText" Text="{Binding SlideShowIntervalText}" Width="32" TextAlignment="Right" />
+                        <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
+                        <ToggleButton Classes="PinToggleButton" IsChecked="{Binding BottomBarPinned}" />
+                    </StackPanel>
+                </Grid>
+
+                <ListBox x:Name="ThumbnailList"
+                         Classes="ThumbnailList"
+                         Margin="0,6,0,0"
+                         IsVisible="{Binding ThumbnailsVisible}"
+                         ItemsSource="{Binding ThumbnailItems}"
+                         SelectedIndex="{Binding ThumbnailSelectedIndex, Mode=TwoWay}"
+                         Focusable="False"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="{Binding ThumbnailScrollBarVisibility}"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ThumbnailItemViewModel}">
+                            <Border Classes="ThumbCard" Classes.current="{Binding IsCurrent}">
+                                <Grid Width="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      Height="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      ToolTip.Tip="{Binding ToolTip}">
+                                    <TextBlock Text="{Binding Name}" Foreground="#FF808080" FontSize="10"
+                                               IsVisible="{Binding Thumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="4" />
+                                    <Image Source="{Binding Thumbnail}" Stretch="Uniform"
+                                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </Border>
+
+        <!-- 업데이트 알림 -->
+        <Border x:Name="UpdateNotice" x:DataType="vm:UpdateViewModel" DataContext="{Binding Update}"
+                IsVisible="{Binding IsNoticeVisible, FallbackValue=False}"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,16,0" Width="360"
+                Background="#F21B1B1E" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="10"
+                Padding="14,8,8,12"
+                BoxShadow="0 2 16 0 #73000000">
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Classes="IconButton" Content="&#xE711;"
+                            FontSize="11" Width="28" Height="26" ToolTip.Tip="닫기 (다음에 다시 알림)"
+                            Command="{Binding DismissCommand}" />
+                    <TextBlock Foreground="{StaticResource PanelForeground}" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center">
+                        <Run Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{StaticResource AccentBrush}" />
+                        <Run Text=" 새 버전 " /><Run Text="{Binding AvailableVersionText, Mode=OneWay}" />
+                    </TextBlock>
+                </DockPanel>
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource SubtleForeground}" FontSize="12"
+                           TextWrapping="Wrap" Margin="0,4,6,0" />
+                <ProgressBar Height="4" Margin="0,10,6,0" Minimum="0" Maximum="100" Value="{Binding Progress, Mode=OneWay}"
+                             Foreground="{StaticResource AccentBrush}" Background="#FF333333" BorderThickness="0"
+                             IsVisible="{Binding IsDownloading}" />
+                <DockPanel Margin="0,12,6,0" IsVisible="{Binding CanInstall}">
+                    <Button Classes="ToolButton" Content="변경 내용" FontSize="12" Foreground="#FF7DB4FF"
+                            Command="{Binding OpenReleasePageCommand}" ToolTip.Tip="릴리스 페이지를 엽니다" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                        <Button Classes="ToolButton" Content="이 버전 건너뛰기" FontSize="12"
+                                Command="{Binding SkipVersionCommand}" ToolTip.Tip="이 버전은 다시 알리지 않습니다 (더 새 버전이 나오면 알림)" />
+                        <Button Classes="AccentToolButton" Content="{Binding InstallButtonText}"
+                                Command="{Binding InstallCommand}" />
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Windows.Threading;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ImageViewer.Helpers;
@@ -177,7 +177,7 @@ public sealed partial class MainViewModel
 
         if (_animationTimer is null)
         {
-            _animationTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher);
+            _animationTimer = new DispatcherTimer(DispatcherPriority.Render);
             _animationTimer.Tick += OnAnimationTick;
         }
 
@@ -612,7 +612,7 @@ public sealed partial class MainViewModel
 
         if (_placeholderTimer is null)
         {
-            _placeholderTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher) { Interval = PlaceholderDelay };
+            _placeholderTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = PlaceholderDelay };
             _placeholderTimer.Tick += (_, _) =>
             {
                 _placeholderTimer.Stop();
@@ -640,13 +640,13 @@ public sealed partial class MainViewModel
         var index = CurrentIndex;
         if (index < 0 || index >= ThumbnailItems.Count || ThumbnailItems[index].Info.Key != info.Key ||
             ThumbnailItems[index].CachedThumbnail is not { } thumbnail ||
-            thumbnail.PixelWidth <= 0 || thumbnail.PixelHeight <= 0)
+            thumbnail.PixelSize.Width <= 0 || thumbnail.PixelSize.Height <= 0)
         {
             return;
         }
 
         var (width, height) = PlaceholderDisplaySize(
-            DisplayMode, (uint)thumbnail.PixelWidth, (uint)thumbnail.PixelHeight,
+            DisplayMode, (uint)thumbnail.PixelSize.Width, (uint)thumbnail.PixelSize.Height,
             _viewportWidth * _dpiScale, _viewportHeight * _dpiScale);
         if (width <= 0 || height <= 0)
         {
@@ -737,7 +737,7 @@ public sealed partial class MainViewModel
     /// <summary>파일 시스템 이벤트(백그라운드 스레드) → 잠시 모았다가 UI 스레드에서 한 번에 갱신.</summary>
     private void OnSourceChanged(object? sender, EventArgs e)
     {
-        _dispatcher.BeginInvoke(() =>
+        _dispatcher.Post(() =>
         {
             if (!ReferenceEquals(sender, _source))
             {
@@ -746,7 +746,7 @@ public sealed partial class MainViewModel
 
             if (_watchDebounce is null)
             {
-                _watchDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+                _watchDebounce = new DispatcherTimer(DispatcherPriority.Background)
                 {
                     Interval = TimeSpan.FromMilliseconds(700),
                 };
@@ -900,6 +900,71 @@ public sealed partial class MainViewModel
         // CurrentIndex 가 가리키던 이전 항목의 표시를 SetCurrent 가 지우지 않도록 먼저 목록을 바꾼다.
         CurrentIndex = -1;
         ThumbnailItems = new ObservableCollection<ThumbnailItemViewModel>(items);
+    }
+
+    #endregion
+
+    #region 이전 · 다음 폴더 / 압축파일 ([ / ])
+
+    [RelayCommand]
+    private Task PreviousSourceAsync() => OpenAdjacentSourceAsync(-1);
+
+    [RelayCommand]
+    private Task NextSourceAsync() => OpenAdjacentSourceAsync(+1);
+
+    private async Task OpenAdjacentSourceAsync(int direction)
+    {
+        if (_source is null)
+        {
+            await OpenFileAsync();
+            return;
+        }
+
+        var info = _source.Info;
+        var target = FindAdjacentSourcePath(info, direction);
+        if (target is null)
+        {
+            var kind = info.SourceType == ImageSourceType.Zip ? "ZIP 파일" : "폴더";
+            ShowOsd(direction < 0 ? $"이전 {kind}이(가) 없습니다." : $"다음 {kind}이(가) 없습니다.");
+            return;
+        }
+
+        await OpenPathAsync(target);
+    }
+
+    internal static string? FindAdjacentSourcePath(ImageSourceInfo info, int direction)
+    {
+        var current = info.SourceType == ImageSourceType.File
+            ? Path.TrimEndingDirectorySeparator(info.Path)
+            : info.Path;
+        var parent = Path.GetDirectoryName(current);
+        if (string.IsNullOrEmpty(parent) || !Directory.Exists(parent))
+        {
+            return null;
+        }
+
+        List<string> candidates;
+        try
+        {
+            candidates = info.SourceType == ImageSourceType.File
+                ? Directory.EnumerateDirectories(parent).ToList()
+                : Directory.EnumerateFiles(parent).Where(ImageFormatHelper.IsZipFile).ToList();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        candidates.Sort((a, b) => NaturalStringComparer.Instance.Compare(Path.GetFileName(a), Path.GetFileName(b)));
+
+        var index = candidates.FindIndex(p => string.Equals(p, current, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var targetIndex = index + direction;
+        return targetIndex >= 0 && targetIndex < candidates.Count ? candidates[targetIndex] : null;
     }
 
     #endregion

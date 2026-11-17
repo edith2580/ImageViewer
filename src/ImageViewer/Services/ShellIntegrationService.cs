@@ -73,6 +73,11 @@ public sealed class ShellIntegrationService
 
     public bool IsRegistered()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TargetKeys[0].Path);
@@ -93,6 +98,11 @@ public sealed class ShellIntegrationService
 
     public void Register()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         var exe = ExecutablePath;
         foreach (var (path, background) in TargetKeys)
         {
@@ -110,6 +120,11 @@ public sealed class ShellIntegrationService
 
     public void Unregister()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         foreach (var (path, _) in TargetKeys)
         {
             Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false);
@@ -122,6 +137,11 @@ public sealed class ShellIntegrationService
     /// <summary>Windows 기본 앱 후보로 지금 실행 파일이 등록되어 있는지.</summary>
     public bool IsDefaultAppRegistered()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
         try
         {
             return DefaultAppRegistration.IsRegistered(Registry.CurrentUser, ExecutablePath);
@@ -136,6 +156,11 @@ public sealed class ShellIntegrationService
     /// <summary>Windows 기본 앱 후보로 등록한다 (기본 앱 지정은 사용자가 Windows 설정에서 한다).</summary>
     public void RegisterDefaultApp()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         DefaultAppRegistration.Register(Registry.CurrentUser, ExecutablePath);
         NotifyShell();
         _logger.LogInformation("Windows 기본 앱 후보로 등록했습니다. ({Count}개 형식)", DefaultAppRegistration.Associations.Count);
@@ -143,6 +168,11 @@ public sealed class ShellIntegrationService
 
     public void UnregisterDefaultApp()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         DefaultAppRegistration.Unregister(Registry.CurrentUser);
         NotifyShell();
         _logger.LogInformation("Windows 기본 앱 등록을 제거했습니다.");

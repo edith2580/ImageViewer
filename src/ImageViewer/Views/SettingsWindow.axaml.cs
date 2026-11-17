@@ -1,4 +1,5 @@
-using System.Windows;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 using ImageViewer.ViewModels;
 
 namespace ImageViewer.Views;
@@ -11,5 +12,7 @@ public partial class SettingsWindow : Window
         DataContext = viewModel;
     }
 
-    private void OnOk(object sender, RoutedEventArgs e) => DialogResult = true;
+    private void OnOk(object? sender, RoutedEventArgs e) => Close(true);
+
+    private void OnCancel(object? sender, RoutedEventArgs e) => Close(false);
 }

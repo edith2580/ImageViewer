@@ -2,21 +2,28 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <PlatformTarget>x64</PlatformTarget>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>ImageViewer</RootNamespace>
     <AssemblyName>ImageViewer</AssemblyName>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Resources\ImageViewer.ico</ApplicationIcon>
     <Version>1.0.6</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>ImageViewer</Product>
-    <Description>Windows image viewer for folders and ZIP archives</Description>
+    <Description>Cross-platform image viewer for folders and ZIP archives</Description>
     <SatelliteResourceLanguages>ko;en</SatelliteResourceLanguages>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' or $(RuntimeIdentifier.StartsWith('win'))">
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Resources\ImageViewer.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <!-- Self-contained publish: dotnet publish -c Release -r win-x64 (see build/publish.ps1) -->
@@ -26,9 +33,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <!-- 멀티코어(OpenMP) 빌드: 큰 이미지 축소가 단일 스레드 빌드보다 약 5배 빠르다. x64 전용 -->
-    <PackageReference Include="Magick.NET-Q8-OpenMP-x64" Version="15.1.0" />
+    <!-- win-x64 배포 시 멀티코어(OpenMP) 빌드 사용, 그 외(macOS/Linux/AnyCPU)는 AnyCPU 네이티브 번들 사용 -->
+    <PackageReference Include="Magick.NET-Q8-OpenMP-x64" Version="15.1.0" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="15.1.0" Condition="'$(RuntimeIdentifier)' != 'win-x64'" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.15" />
@@ -38,7 +49,7 @@
 
   <ItemGroup>
     <!-- 창 제목 표시줄 · 작업 표시줄용 아이콘 (exe 아이콘은 ApplicationIcon) -->
-    <Resource Include="Resources\ImageViewer.ico" />
+    <AvaloniaResource Include="Resources\ImageViewer.ico" />
   </ItemGroup>
 
   <ItemGroup>

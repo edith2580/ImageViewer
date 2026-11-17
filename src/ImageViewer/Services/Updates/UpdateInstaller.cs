@@ -36,7 +36,9 @@ public static class UpdateInstaller
         Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "ImageViewer.exe");
 
     public static InstallKind DetectCurrent() =>
-        Detect(CurrentExePath, ReadInstallLocation(), File.Exists(Path.Combine(AppContext.BaseDirectory, "ImageViewer.dll")));
+        OperatingSystem.IsWindows()
+            ? Detect(CurrentExePath, ReadInstallLocation(), File.Exists(Path.Combine(AppContext.BaseDirectory, "ImageViewer.dll")))
+            : InstallKind.Unsupported;
 
     /// <param name="exePath">실행 중인 exe.</param>
     /// <param name="installLocation">설치 프로그램이 기록한 설치 폴더 (없으면 null).</param>
@@ -69,6 +71,11 @@ public static class UpdateInstaller
 
     private static string? ReadInstallLocation()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);

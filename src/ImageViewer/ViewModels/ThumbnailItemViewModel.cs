@@ -1,4 +1,4 @@
-using System.Windows.Media.Imaging;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ImageViewer.Models;
 
@@ -10,7 +10,7 @@ namespace ImageViewer.ViewModels;
 public sealed partial class ThumbnailItemViewModel : ObservableObject
 {
     private readonly Action<ThumbnailItemViewModel> _requestThumbnail;
-    private BitmapSource? _thumbnail;
+    private Bitmap? _thumbnail;
     private bool _requested;
 
     public ThumbnailItemViewModel(int index, ImageInfo info, Action<ThumbnailItemViewModel> requestThumbnail)
@@ -34,7 +34,7 @@ public sealed partial class ThumbnailItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isFailed;
 
-    public BitmapSource? Thumbnail
+    public Bitmap? Thumbnail
     {
         get
         {
@@ -51,7 +51,7 @@ public sealed partial class ThumbnailItemViewModel : ObservableObject
     internal bool HasThumbnail => _thumbnail is not null;
 
     /// <summary>이미 만들어 둔 썸네일 (없으면 null). <see cref="Thumbnail"/> 과 달리 생성을 요청하지 않는다.</summary>
-    internal BitmapSource? CachedThumbnail => _thumbnail;
+    internal Bitmap? CachedThumbnail => _thumbnail;
 
     /// <summary>폴더 변경으로 목록이 다시 만들어질 때 위치 · 정보만 갱신한다 (썸네일은 유지).</summary>
     internal void Update(int index, ImageInfo info)
@@ -63,7 +63,7 @@ public sealed partial class ThumbnailItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ToolTip));
     }
 
-    internal void SetThumbnail(BitmapSource? bitmap)
+    internal void SetThumbnail(Bitmap? bitmap)
     {
         _thumbnail = bitmap;
         IsFailed = bitmap is null;

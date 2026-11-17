@@ -1,4 +1,4 @@
-using System.Windows.Input;
+using Avalonia.Input;
 using ImageViewer.Helpers;
 
 namespace ImageViewer.Tests;
@@ -132,13 +132,13 @@ public class KeyboardHelperTests
     [InlineData(Key.OemMinus, ShortcutAction.ZoomOut)]
     [InlineData(Key.Space, ShortcutAction.ToggleSlideShow)]
     public void Maps_plan_shortcuts(Key key, ShortcutAction expected) =>
-        Assert.Equal(expected, KeyboardHelper.GetAction(key, Key.None, ModifierKeys.None));
+        Assert.Equal(expected, KeyboardHelper.GetAction(key, KeyModifiers.None));
 
     [Fact]
     public void Alt_enter_toggles_full_screen() =>
-        Assert.Equal(ShortcutAction.ToggleFullScreen, KeyboardHelper.GetAction(Key.System, Key.Enter, ModifierKeys.Alt));
+        Assert.Equal(ShortcutAction.ToggleFullScreen, KeyboardHelper.GetAction(Key.Enter, KeyModifiers.Alt));
 
     [Fact]
     public void Ctrl_combinations_are_left_to_menus() =>
-        Assert.Equal(ShortcutAction.None, KeyboardHelper.GetAction(Key.O, Key.None, ModifierKeys.Control));
+        Assert.Equal(ShortcutAction.None, KeyboardHelper.GetAction(Key.O, KeyModifiers.Control));
 }

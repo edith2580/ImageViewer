@@ -1,0 +1,151 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ImageViewer.ViewModels"
+        x:Class="ImageViewer.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="설정"
+        Icon="avares://ImageViewer/Resources/ImageViewer.ico"
+        Width="520" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Window.Styles>
+        <Style Selector="Border.GroupCard">
+            <Setter Property="BorderBrush" Value="#FFD0D0D6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+        <Style Selector="TextBlock.GroupHeader">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#FF333333" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+    </Window.Styles>
+
+    <StackPanel Margin="12" Spacing="10">
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="표시" Classes="GroupHeader" />
+                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Classes="Label" Text="배경" />
+                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                              x:CompileBindings="False"
+                              ItemsSource="{Binding BackgroundOptions}"
+                              DisplayMemberBinding="{Binding Label}"
+                              SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding Background}" />
+                    <TextBlock Grid.Row="1" Classes="Label" Text="마우스 휠" Margin="0,6,8,0" />
+                    <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                              x:CompileBindings="False"
+                              ItemsSource="{Binding MouseWheelOptions}"
+                              DisplayMemberBinding="{Binding Label}"
+                              SelectedValueBinding="{Binding Value}"
+                              SelectedValue="{Binding MouseWheel}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="탐색 · 슬라이드쇼" Classes="GroupHeader" />
+                <CheckBox Content="처음과 마지막 이미지를 연결해 순환 탐색" IsChecked="{Binding WrapAround}" />
+                <CheckBox Content="폴더 변경(추가 · 삭제 · 수정)을 감시해 목록 자동 갱신" IsChecked="{Binding WatchFolder}" />
+                <CheckBox Content="슬라이드쇼가 끝나면 처음부터 반복" IsChecked="{Binding SlideShowRepeat}" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="썸네일" Classes="GroupHeader" />
+                <CheckBox Content="하단 썸네일 목록 표시" IsChecked="{Binding ThumbnailVisible}" />
+                <CheckBox Content="하단 썸네일 목록 아래에 가로 스크롤바 표시" IsChecked="{Binding ThumbnailScrollBar}"
+                          IsEnabled="{Binding ThumbnailVisible}" />
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock Classes="Label" Text="크기" Width="112" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding ThumbnailSize, StringFormat={}{0} px}" Width="50"
+                               TextAlignment="Right" VerticalAlignment="Center" />
+                    <Slider Minimum="48" Maximum="256" TickFrequency="8" IsSnapToTickEnabled="True"
+                            Value="{Binding ThumbnailSize}" VerticalAlignment="Center" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="필터 강도" Classes="GroupHeader" />
+                <Grid ColumnDefinitions="120,*,50" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Classes="Label" Text="부드럽게 강도" ToolTip.Tip="화면 픽셀 기준 흐림 정도 (sigma). 기본값 0.5" />
+                    <Slider Grid.Column="1" Minimum="0.1" Maximum="2" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                            Value="{Binding SmoothSigma}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding SmoothSigma, StringFormat={}{0:0.0}}" TextAlignment="Right" VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Row="1" Classes="Label" Text="선명하게 (sigma)" Margin="0,6,8,0" />
+                    <Slider Grid.Row="1" Grid.Column="1" Minimum="0.1" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                            Value="{Binding SharpenSigma}" VerticalAlignment="Center" Margin="0,6,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding SharpenSigma, StringFormat={}{0:0.0}}" TextAlignment="Right" VerticalAlignment="Center" Margin="0,6,0,0" />
+
+                    <TextBlock Grid.Row="2" Classes="Label" Text="선명하게 (양)" Margin="0,6,8,0" />
+                    <Slider Grid.Row="2" Grid.Column="1" Minimum="0.1" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                            Value="{Binding SharpenAmount}" VerticalAlignment="Center" Margin="0,6,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding SharpenAmount, StringFormat={}{0:0.0}}" TextAlignment="Right" VerticalAlignment="Center" Margin="0,6,0,0" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="안전 한도" Classes="GroupHeader" />
+                <DockPanel>
+                    <TextBlock Classes="Label" Text="최대 이미지 크기" Width="112" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding MaxImageMegapixels, StringFormat={}{0} MP}" Width="60"
+                               TextAlignment="Right" VerticalAlignment="Center" />
+                    <Slider Minimum="10" Maximum="500" TickFrequency="10" IsSnapToTickEnabled="True"
+                            Value="{Binding MaxImageMegapixels}" VerticalAlignment="Center" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard">
+            <StackPanel>
+                <TextBlock Text="업데이트" Classes="GroupHeader" />
+                <CheckBox Content="시작할 때 새 버전 자동 확인 (하루 한 번, 설정 > 정보에서 직접 확인 가능)"
+                          IsChecked="{Binding AutoCheckUpdates}" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="GroupCard" IsVisible="{Binding IsWindows}">
+            <StackPanel>
+                <TextBlock Text="Windows 탐색기 연동" Classes="GroupHeader" />
+                <TextBlock TextWrapping="Wrap" Foreground="#FF555555">
+                    폴더와 ZIP 파일의 우클릭 메뉴에 'ImageViewer에서 보기'를 추가합니다.
+                    Windows 11 에서는 '추가 옵션 표시'(Shift+F10) 메뉴에 나타납니다.
+                </TextBlock>
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Right" Content="제거" Width="70" Command="{Binding UnregisterShellCommand}" />
+                    <Button DockPanel.Dock="Right" Content="등록" Width="70" Margin="0,0,6,0" Command="{Binding RegisterShellCommand}" />
+                    <TextBlock Text="{Binding ShellStatusText}" VerticalAlignment="Center" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <DockPanel Margin="0,4,0,0">
+            <Button Content="기본 앱 설정..." MinWidth="110" Height="28" Padding="10,0"
+                    IsVisible="{Binding IsWindows}"
+                    Command="{Binding OpenDefaultAppsCommand}"
+                    ToolTip.Tip="ImageViewer 를 Windows 기본 앱 목록에 등록하고 [설정 &gt; 앱 &gt; 기본 앱] 을 엽니다" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="확인" Width="84" Height="28" IsDefault="True" Click="OnOk" />
+                <Button Content="취소" Width="84" Height="28" IsCancel="True" Click="OnCancel" />
+            </StackPanel>
+        </DockPanel>
+    </StackPanel>
+</Window>

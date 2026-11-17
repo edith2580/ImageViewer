@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Navigation;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 using ImageViewer.Services;
 using ImageViewer.ViewModels;
 
@@ -17,7 +17,7 @@ public partial class AboutWindow : Window
         DataContext = info;
         if (update is null)
         {
-            UpdateGroup.Visibility = Visibility.Collapsed;
+            UpdateGroup.IsVisible = false;
         }
         else
         {
@@ -25,21 +25,7 @@ public partial class AboutWindow : Window
         }
     }
 
-    private void OnRequestNavigate(object sender, RequestNavigateEventArgs e)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // 기본 브라우저가 없으면 무시
-        }
-
-        e.Handled = true;
-    }
-
-    private void OnOpenProject(object sender, RoutedEventArgs e)
+    private void OnOpenProject(object? sender, RoutedEventArgs e)
     {
         if (_info.ProjectUrl is not { } url)
         {
@@ -56,16 +42,21 @@ public partial class AboutWindow : Window
         }
     }
 
-    private void OnCopy(object sender, RoutedEventArgs e)
+    private async void OnCopy(object? sender, RoutedEventArgs e)
     {
         try
         {
-            Clipboard.SetText(_info.ToText());
-            CopiedText.Visibility = Visibility.Visible;
+            if (GetTopLevel(this)?.Clipboard is { } clipboard)
+            {
+                await clipboard.SetTextAsync(_info.ToText());
+                CopiedText.IsVisible = true;
+            }
         }
         catch (Exception)
         {
             // 다른 프로그램이 클립보드를 잡고 있으면 실패할 수 있다
         }
     }
+
+    private void OnClose(object? sender, RoutedEventArgs e) => Close();
 }

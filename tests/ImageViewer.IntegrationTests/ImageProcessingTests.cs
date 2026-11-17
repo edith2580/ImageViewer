@@ -1,4 +1,5 @@
-using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
+using Avalonia.Media.Imaging;
 using ImageMagick;
 using ImageViewer.Models;
 using ImageViewer.Services;
@@ -185,9 +186,8 @@ public class ImageRenderServiceTests
         var renderer = new ImageRenderService(new ImageFilterService(settings));
         var bitmap = await renderer.RenderAsync(decoded, 100, 50, filter, ImageTransform.Identity, CancellationToken.None);
 
-        Assert.Equal(100, bitmap.PixelWidth);
-        Assert.Equal(50, bitmap.PixelHeight);
-        Assert.True(bitmap.IsFrozen);
+        Assert.Equal(100, bitmap.PixelSize.Width);
+        Assert.Equal(50, bitmap.PixelSize.Height);
 
         // 원본은 변경되지 않는다.
         Assert.Equal(400u, decoded.Width);
@@ -212,8 +212,13 @@ public class ImageRenderServiceTests
         var renderer = new ImageRenderService(new ImageFilterService(settings));
         var bitmap = await renderer.RenderAsync(decoded, 10, 10, ImageFilter.None, ImageTransform.Identity, CancellationToken.None);
 
+        var wb = (WriteableBitmap)bitmap;
         var pixels = new byte[10 * 10 * 4];
-        bitmap.CopyPixels(pixels, 40, 0);
+        using (var fb = wb.Lock())
+        {
+            Marshal.Copy(fb.Address, pixels, 0, pixels.Length);
+        }
+
         Assert.Equal(0, pixels[3]); // alpha
         decoded.Release();
     }
@@ -232,13 +237,13 @@ public class ThumbnailServiceTests
         var info = (await source.GetImagesAsync(CancellationToken.None)).Single();
 
         var service = new ThumbnailService(settings);
-        var tcs = new TaskCompletionSource<(BitmapSource?, bool)>();
+        var tcs = new TaskCompletionSource<(Bitmap?, bool)>();
         service.Request(source, info, 96, (b, done) => tcs.TrySetResult((b, done)));
         var (bitmap, completed) = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.True(completed);
         Assert.NotNull(bitmap);
-        Assert.Equal(96, bitmap!.PixelWidth);
-        Assert.Equal(48, bitmap.PixelHeight);
+        Assert.Equal(96, bitmap!.PixelSize.Width);
+        Assert.Equal(48, bitmap.PixelSize.Height);
     }
 }

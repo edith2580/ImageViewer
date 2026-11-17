@@ -129,9 +129,9 @@ public class ReducedDecodeTests
         var bitmap = await renderer.RenderAsync(decoded, 1264, 948, ImageFilter.None, ImageTransform.Identity, CancellationToken.None);
 
         // 축소 디코딩 결과(화면보다 조금 큼)는 CPU 로 다시 줄이지 않고 화면 표시 단계에서 줄인다.
-        Assert.Equal((int)decoded.Width, bitmap.PixelWidth);
-        Assert.True(bitmap.PixelWidth >= 1264 && bitmap.PixelHeight >= 948);
-        Assert.Equal(4.0 / 3.0, (double)bitmap.PixelWidth / bitmap.PixelHeight, 2);
+        Assert.Equal((int)decoded.Width, bitmap.PixelSize.Width);
+        Assert.True(bitmap.PixelSize.Width >= 1264 && bitmap.PixelSize.Height >= 948);
+        Assert.Equal(4.0 / 3.0, (double)bitmap.PixelSize.Width / bitmap.PixelSize.Height, 2);
         decoded.Release();
     }
 
