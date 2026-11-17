@@ -44,6 +44,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.15" />
     <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
     <PackageReference Include="SharpCompress" Version="1.0.0" />
   </ItemGroup>
 
