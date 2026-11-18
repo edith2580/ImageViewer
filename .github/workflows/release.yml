@@ -166,7 +166,7 @@ jobs:
           MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: L4MC8QZS4Z
+          APPLE_TEAM_ID: GMXNVH8YU9
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           mkdir -p artifacts/dist
