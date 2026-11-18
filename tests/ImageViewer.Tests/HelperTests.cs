@@ -26,8 +26,21 @@ public class NaturalStringComparerTests
     public void Leading_zeros_compare_by_value()
     {
         Assert.True(NaturalStringComparer.Instance.Compare("p002", "p10") < 0);
-        Assert.True(NaturalStringComparer.Instance.Compare("p1", "p01") < 0);
+        Assert.True(NaturalStringComparer.Instance.Compare("p01", "p1") < 0);
         Assert.Equal(0, NaturalStringComparer.Instance.Compare("same", "same"));
+    }
+
+    [Fact]
+    public void Matches_windows_explorer_order_for_mixed_scripts()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var names = new List<string> { "漢子", "가나다", "abc", "[표지]", "2", "10" };
+        names.Sort(NaturalStringComparer.Instance);
+        Assert.Equal(["[표지]", "2", "10", "abc", "가나다", "漢子"], names);
     }
 }
 

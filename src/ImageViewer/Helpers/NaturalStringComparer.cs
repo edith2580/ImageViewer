@@ -1,8 +1,12 @@
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+
 namespace ImageViewer.Helpers;
 
 /// <summary>
-/// 파일명 정렬용 비교자. 숫자 구간을 숫자로 비교한다 (image2 &lt; image10).
-/// Windows 탐색기의 정렬 방식과 유사하며, 대소문자를 구분하지 않는다.
+/// 파일명 · 폴더명 정렬용 비교자.
+/// Windows 에서는 탐색기(Explorer)와 완전히 동일한 <c>StrCmpLogicalW</c> 로 정렬하고,
+/// macOS / Linux 에서는 로캘 기반 자연 정렬을 사용한다.
 /// </summary>
 public sealed class NaturalStringComparer : IComparer<string?>
 {
@@ -25,13 +29,21 @@ public sealed class NaturalStringComparer : IComparer<string?>
             return 1;
         }
 
+        if (OperatingSystem.IsWindows())
+        {
+            var cmp = StrCmpLogicalW(x, y);
+            return cmp != 0 ? cmp : string.CompareOrdinal(x, y);
+        }
+
+        return CompareFallback(x, y);
+    }
+
+    private static int CompareFallback(string x, string y)
+    {
         int ix = 0, iy = 0;
         while (ix < x.Length && iy < y.Length)
         {
-            var cx = x[ix];
-            var cy = y[iy];
-
-            if (char.IsAsciiDigit(cx) && char.IsAsciiDigit(cy))
+            if (char.IsAsciiDigit(x[ix]) && char.IsAsciiDigit(y[iy]))
             {
                 var sx = ix;
                 var sy = iy;
@@ -52,8 +64,8 @@ public sealed class NaturalStringComparer : IComparer<string?>
                     return cmp;
                 }
 
-                // 숫자 값이 같으면 앞자리 0이 적은 쪽을 먼저 (1 < 01)
-                var lenCmp = (ix - sx).CompareTo(iy - sy);
+                // 숫자 값이 같으면 앞자리 0이 많은 쪽을 먼저 (01 < 1, StrCmpLogicalW 와 동일)
+                var lenCmp = (iy - sy).CompareTo(ix - sx);
                 if (lenCmp != 0)
                 {
                     return lenCmp;
@@ -62,18 +74,27 @@ public sealed class NaturalStringComparer : IComparer<string?>
                 continue;
             }
 
-            var c = string.Compare(
-                x, ix, y, iy, 1, StringComparison.CurrentCultureIgnoreCase);
-            if (c != 0)
-            {
-                return c;
-            }
+            var tx = ix;
+            var ty = iy;
+            while (ix < x.Length && !char.IsAsciiDigit(x[ix])) ix++;
+            while (iy < y.Length && !char.IsAsciiDigit(y[iy])) iy++;
 
-            ix++;
-            iy++;
+            var textCmp = CultureInfoCompare(x.AsSpan(tx, ix - tx), y.AsSpan(ty, iy - ty));
+            if (textCmp != 0)
+            {
+                return textCmp;
+            }
         }
 
         var remain = (x.Length - ix).CompareTo(y.Length - iy);
         return remain != 0 ? remain : string.CompareOrdinal(x, y);
     }
+
+    private static int CultureInfoCompare(ReadOnlySpan<char> x, ReadOnlySpan<char> y) =>
+        System.Globalization.CultureInfo.CurrentCulture.CompareInfo.Compare(
+            x, y, System.Globalization.CompareOptions.IgnoreCase);
+
+    [SupportedOSPlatform("windows")]
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int StrCmpLogicalW(string psz1, string psz2);
 }
