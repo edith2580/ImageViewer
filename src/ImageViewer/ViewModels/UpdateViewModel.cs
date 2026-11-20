@@ -63,7 +63,7 @@ public sealed partial class UpdateViewModel : ObservableObject, IDisposable
     {
         InstallKind.Installed => "설치 버전",
         InstallKind.Portable => "포터블",
-        _ => "개발 빌드 (자동 설치 미지원)",
+        _ => "수동 설치 (자동 업데이트 미지원)",
     };
 
     [ObservableProperty]
