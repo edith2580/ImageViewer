@@ -40,7 +40,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private IImageSource? _source;
     private IReadOnlyList<ImageInfo> _images = [];
+    private bool[] _widePages = [];
+    private readonly HashSet<int> _manualComicBlanks = [];
+    private bool _comicPagesProbed;
+    private IReadOnlyList<ComicSpread> _comicSpreads = [];
     private DecodedImage? _decoded;
+    private DecodedImage? _secondDecoded;
     private string? _bitmapImageKey;
     private bool _pendingNewImage;
     private double _zoomFactor = 1.0;
@@ -55,6 +60,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _renderCts;
     private CancellationTokenSource? _prefetchCts;
     private CancellationTokenSource? _openCts;
+    private CancellationTokenSource? _comicProbeCts;
 
     public MainViewModel(
         SettingsService settingsService,
@@ -136,6 +142,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ObservableCollection<ThumbnailItemViewModel> _thumbnailItems = [];
 
     [ObservableProperty]
+    private ObservableCollection<ComicThumbnailItemViewModel> _comicThumbnailItems = [];
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PositionText), nameof(ThumbnailSelectedIndex), nameof(HasImages), nameof(ShowThumbnailStrip))]
     private int _currentIndex = -1;
 
@@ -145,6 +154,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private Bitmap? _currentBitmap;
+
+    [ObservableProperty]
+    private Bitmap? _leftPageBitmap;
+
+    [ObservableProperty]
+    private Bitmap? _rightPageBitmap;
+
+    [ObservableProperty]
+    private double _leftPageWidth;
+
+    [ObservableProperty]
+    private double _leftPageHeight;
+
+    [ObservableProperty]
+    private double _rightPageWidth;
+
+    [ObservableProperty]
+    private double _rightPageHeight;
+
+    [ObservableProperty]
+    private bool _hasLeftPageSlot;
+
+    [ObservableProperty]
+    private bool _hasRightPageSlot;
 
     [ObservableProperty]
     private double _displayWidth;
@@ -185,9 +218,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 return SourceInfo is null ? "ImageViewer" : $"{SourceInfo.DisplayName} - ImageViewer";
             }
 
+            var name = CurrentImage.Name;
+            if (IsComicMode && CurrentIndex >= 0)
+            {
+                var spread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+                if (spread is { SecondIndex: { } s } && s < _images.Count)
+                {
+                    name = ComicDirection == ComicReadingDirection.RightToLeft
+                        ? $"{_images[s].Name} · {_images[spread.FirstIndex].Name}"
+                        : $"{_images[spread.FirstIndex].Name} · {_images[s].Name}";
+                }
+            }
+
             return SourceInfo is null
-                ? $"{CurrentImage.Name} - ImageViewer"
-                : $"{CurrentImage.Name} - {SourceInfo.DisplayName} - ImageViewer";
+                ? $"{name} - ImageViewer"
+                : $"{name} - {SourceInfo.DisplayName} - ImageViewer";
         }
     }
 
@@ -198,6 +243,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (_images.Count == 0)
             {
                 return "0 / 0";
+            }
+
+            if (IsComicMode && CurrentIndex >= 0)
+            {
+                var spread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+                if (spread is not null)
+                {
+                    return spread.SecondIndex is { } s
+                        ? $"{spread.FirstIndex + 1:N0}-{s + 1:N0} / {_images.Count:N0}"
+                        : $"{spread.FirstIndex + 1:N0} / {_images.Count:N0}";
+                }
             }
 
             var text = $"{CurrentIndex + 1:N0} / {_images.Count:N0}";
@@ -219,6 +275,122 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
     }
+
+    /// <summary>코믹 뷰어(2페이지) 하단 썸네일 선택 위치.</summary>
+    public int ComicThumbnailSelectedIndex
+    {
+        get => ComicSpreadHelper.FindSpreadIndex(_comicSpreads, CurrentIndex);
+        set
+        {
+            if (value >= 0 && value < ComicThumbnailItems.Count)
+            {
+                var start = ComicThumbnailItems[value].StartIndex;
+                if (start != CurrentIndex)
+                {
+                    _ = GoToAsync(start);
+                }
+            }
+        }
+    }
+
+    public bool IsComicMode
+    {
+        get => Settings.Display.ComicMode;
+        set
+        {
+            if (Settings.Display.ComicMode == value)
+            {
+                return;
+            }
+
+            Settings.Display.ComicMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowSingleThumbnails));
+            OnPropertyChanged(nameof(ShowComicThumbnails));
+            OnPropertyChanged(nameof(PositionText));
+            OnPropertyChanged(nameof(WindowTitle));
+            OnPropertyChanged(nameof(ComicThumbnailSelectedIndex));
+            OnPropertyChanged(nameof(IsCurrentSpreadManualBlank));
+            OnPropertyChanged(nameof(ComicBlankButtonText));
+            ShowOsd(value ? $"코믹 뷰어 켜기 ({ComicDirectionText})" : "코믹 뷰어 끄기");
+
+            if (_images.Count == 0)
+            {
+                return;
+            }
+
+            if (value)
+            {
+                if (!_comicPagesProbed)
+                {
+                    StartComicPageProbe();
+                }
+
+                var start = ComicSpreadHelper.GetSpreadStart(_comicSpreads, CurrentIndex < 0 ? 0 : CurrentIndex);
+                if (start < 0)
+                {
+                    start = 0;
+                }
+
+                _navigation.MoveTo(start);
+                SetCurrent(start);
+                _ = LoadCurrentAsync();
+            }
+            else
+            {
+                _comicProbeCts?.Cancel();
+                ReplaceSecondDecoded(null);
+                ClearComicPages();
+                _ = LoadCurrentAsync();
+            }
+        }
+    }
+
+    public ComicReadingDirection ComicDirection
+    {
+        get => Settings.Display.ComicDirection;
+        set
+        {
+            if (Settings.Display.ComicDirection == value)
+            {
+                return;
+            }
+
+            Settings.Display.ComicDirection = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ComicDirectionText));
+            OnPropertyChanged(nameof(WindowTitle));
+            foreach (var item in ComicThumbnailItems)
+            {
+                item.SetDirection(value);
+            }
+
+            ShowOsd(value == ComicReadingDirection.RightToLeft
+                ? "코믹 방향: 우 → 좌 [2p, 1p]"
+                : "코믹 방향: 좌 → 우 [1p, 2p]");
+
+            if (IsComicMode && _decoded is not null && !IsCurrentWideSingle(_decoded, _secondDecoded))
+            {
+                // 이미 렌더링된 좌/우 비트맵과 크기·슬롯만 즉시 뒤바꾼다.
+                (LeftPageBitmap, RightPageBitmap) = (RightPageBitmap, LeftPageBitmap);
+                (LeftPageWidth, RightPageWidth) = (RightPageWidth, LeftPageWidth);
+                (LeftPageHeight, RightPageHeight) = (RightPageHeight, LeftPageHeight);
+                (HasLeftPageSlot, HasRightPageSlot) = (HasRightPageSlot, HasLeftPageSlot);
+                ApplyComicDimensions();
+            }
+        }
+    }
+
+    public string ComicDirectionText =>
+        ComicDirection == ComicReadingDirection.RightToLeft ? "우→좌" : "좌→우";
+
+    public bool HasManualComicBlanks => _manualComicBlanks.Count > 0;
+
+    public bool IsCurrentSpreadManualBlank =>
+        IsComicMode && CurrentIndex >= 0 &&
+        ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex) is { TrailingBlank: true };
+
+    public string ComicBlankButtonText => IsCurrentSpreadManualBlank ? "빈쪽 해제" : "+ 빈쪽";
 
     public DisplayMode DisplayMode
     {
@@ -329,12 +501,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Settings.Thumbnail.Visible = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(ShowThumbnailStrip));
+            OnPropertyChanged(nameof(ShowSingleThumbnails));
+            OnPropertyChanged(nameof(ShowComicThumbnails));
         }
     }
 
     public bool ShowThumbnailStrip => ThumbnailsVisible && HasImages;
 
+    public bool ShowSingleThumbnails => ShowThumbnailStrip && !IsComicMode;
+
+    public bool ShowComicThumbnails => ShowThumbnailStrip && IsComicMode;
+
     public double ThumbnailSize => Settings.Thumbnail.Size;
+
+    public double ComicThumbnailWidth => Math.Round(Settings.Thumbnail.Size * 0.72);
+
+    public double ComicThumbnailWideWidth => ComicThumbnailWidth * 2;
 
     /// <summary>하단 썸네일 목록의 가로 스크롤바 (설정 &gt; 썸네일). 켜면 넘칠 때만 표시.</summary>
     public ScrollBarVisibility ThumbnailScrollBarVisibility =>
@@ -469,14 +651,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         var old = _source;
         DetachWatcher(old);
+        _comicProbeCts?.Cancel();
         _source = source;
         _images = images;
+        _widePages = new bool[images.Count];
+        _manualComicBlanks.Clear();
+        _comicPagesProbed = false;
+        _comicSpreads = ComicSpreadHelper.BuildSpreads(images.Count, _widePages, _manualComicBlanks);
+        OnPropertyChanged(nameof(HasManualComicBlanks));
+        OnPropertyChanged(nameof(IsCurrentSpreadManualBlank));
+        OnPropertyChanged(nameof(ComicBlankButtonText));
         SourceInfo = source.Info;
-        _navigation.Reset(images.Count, initialIndex);
+        _navigation.Reset(images.Count, IsComicMode && images.Count > 0 ? ComicSpreadHelper.GetSpreadStart(_comicSpreads, initialIndex) : initialIndex);
         _slideShow.ResetOrder();
         _loader.ClearCache();
         _renderer.ClearCache();
         ReplaceDecoded(null);
+        ReplaceSecondDecoded(null);
+        ClearComicPages();
 
         // 이전 소스는 진행 중인 백그라운드 작업이 끝난 뒤 해제한다.
         if (old is not null)
@@ -486,6 +678,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         ThumbnailItems = new ObservableCollection<ThumbnailItemViewModel>(
             images.Select((info, i) => new ThumbnailItemViewModel(i, info, RequestThumbnail)));
+        RebuildComicThumbnails();
 
         _logger.LogInformation("{Type} 열기: 이미지 {Count}개", source.Info.Label, images.Count);
         AttachWatcher(source);
@@ -506,6 +699,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         PlaceholderMessage = null;
         _lastDirection = 1;
         SetCurrent(_navigation.CurrentIndex);
+        if (IsComicMode)
+        {
+            StartComicPageProbe();
+        }
+
         _ = LoadCurrentAsync();
     }
 
@@ -514,19 +712,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     #region 탐색
 
     [RelayCommand]
-    private Task NextAsync() => NavigateAsync(_navigation.GetNextIndex(), +1, "마지막 이미지입니다.");
+    private Task NextAsync() => IsComicMode
+        ? NavigateAsync(ComicSpreadHelper.GetNextSpreadStart(_comicSpreads, CurrentIndex, _navigation.WrapAround), +1, "마지막 페이지입니다.")
+        : NavigateAsync(_navigation.GetNextIndex(), +1, "마지막 이미지입니다.");
 
     [RelayCommand]
-    private Task PreviousAsync() => NavigateAsync(_navigation.GetPreviousIndex(), -1, "첫 번째 이미지입니다.");
+    private Task PreviousAsync() => IsComicMode
+        ? NavigateAsync(ComicSpreadHelper.GetPreviousSpreadStart(_comicSpreads, CurrentIndex, _navigation.WrapAround), -1, "첫 번째 페이지입니다.")
+        : NavigateAsync(_navigation.GetPreviousIndex(), -1, "첫 번째 이미지입니다.");
 
     [RelayCommand]
     private Task FirstAsync() => NavigateAsync(_navigation.GetFirstIndex(), +1, null);
 
     [RelayCommand]
-    private Task LastAsync() => NavigateAsync(_navigation.GetLastIndex(), -1, null);
+    private Task LastAsync() => IsComicMode
+        ? NavigateAsync(ComicSpreadHelper.GetLastSpreadStart(_comicSpreads), -1, null)
+        : NavigateAsync(_navigation.GetLastIndex(), -1, null);
 
-    public Task GoToAsync(int index) =>
-        NavigateAsync(index, index >= CurrentIndex ? +1 : -1, null);
+    public Task GoToAsync(int index)
+    {
+        var target = IsComicMode && _comicSpreads.Count > 0
+            ? ComicSpreadHelper.GetSpreadStart(_comicSpreads, index)
+            : index;
+        return NavigateAsync(target, target >= CurrentIndex ? +1 : -1, null);
+    }
 
     private Task NavigateAsync(int index, int direction, string? edgeMessage, bool fromSlideShow = false)
     {
@@ -570,6 +779,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ThumbnailItems[CurrentIndex].IsCurrent = false;
         }
 
+        var oldSpread = ComicSpreadHelper.FindSpreadIndex(_comicSpreads, CurrentIndex);
+        if (oldSpread >= 0 && oldSpread < ComicThumbnailItems.Count)
+        {
+            ComicThumbnailItems[oldSpread].IsCurrent = false;
+        }
+
         CurrentIndex = index;
         CurrentImage = index >= 0 && index < _images.Count ? _images[index] : null;
 
@@ -577,6 +792,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             ThumbnailItems[index].IsCurrent = true;
         }
+
+        var newSpread = ComicSpreadHelper.FindSpreadIndex(_comicSpreads, index);
+        if (newSpread >= 0 && newSpread < ComicThumbnailItems.Count)
+        {
+            ComicThumbnailItems[newSpread].IsCurrent = true;
+        }
+
+        OnPropertyChanged(nameof(ComicThumbnailSelectedIndex));
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(PositionText));
+        OnPropertyChanged(nameof(IsCurrentSpreadManualBlank));
+        OnPropertyChanged(nameof(ComicBlankButtonText));
     }
 
     #endregion
@@ -608,15 +835,80 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var decoded = await _loader.LoadAsync(source, info, pageIndex, CurrentDecodeTarget(), ct);
+            var comicMode = IsComicMode;
+            var currentIdx = CurrentIndex;
+            var spread = comicMode ? ComicSpreadHelper.FindSpread(_comicSpreads, currentIdx) : null;
+            var firstKnownWide = comicMode && (spread?.IsWideSingle ?? false);
+
+            var decodeTarget = CurrentDecodeTarget();
+            var firstDecodeTarget = comicMode && !firstKnownWide && decodeTarget is { } dt
+                ? dt with { ViewportPixelWidth = Math.Max(1.0, dt.ViewportPixelWidth / 2.0) }
+                : decodeTarget;
+
+            ImageInfo? secondInfo = null;
+            int secondIdx = -1;
+            if (comicMode && spread is { SecondIndex: { } sIdx } && sIdx < _images.Count)
+            {
+                secondIdx = sIdx;
+                secondInfo = _images[sIdx];
+            }
+
+            DecodedImage decoded;
+            DecodedImage? secondDecoded = null;
+            if (secondInfo is not null)
+            {
+                var firstTask = _loader.LoadAsync(source, info, pageIndex, firstDecodeTarget, ct);
+                var secondTask = LoadOptionalSecondAsync(source, secondInfo, firstDecodeTarget, ct);
+                await Task.WhenAll((Task)firstTask, secondTask);
+                decoded = await firstTask;
+                secondDecoded = await secondTask;
+            }
+            else
+            {
+                decoded = await _loader.LoadAsync(source, info, pageIndex, firstDecodeTarget, ct);
+            }
+
             var decodeMs = timing.ElapsedMilliseconds;
             if (version != _loadVersion)
             {
                 decoded.Release();
+                secondDecoded?.Release();
                 return;
             }
 
+            // 코믹 모드에서 실제 디코딩 크기를 확인해 정사각형 · 가로 이미지(2페이지 크기)이면 단독 1장만 표시한다.
+            if (comicMode && currentIdx >= 0 && currentIdx < _widePages.Length)
+            {
+                var firstIsWide = ComicSpreadHelper.IsWideImage(decoded.OriginalWidth, decoded.OriginalHeight);
+                var secondIsWide = secondDecoded is not null &&
+                                   ComicSpreadHelper.IsWideImage(secondDecoded.OriginalWidth, secondDecoded.OriginalHeight);
+                var spreadChanged = false;
+                if (_widePages[currentIdx] != firstIsWide)
+                {
+                    _widePages[currentIdx] = firstIsWide;
+                    spreadChanged = true;
+                }
+
+                if (secondIdx >= 0 && secondIdx < _widePages.Length && _widePages[secondIdx] != secondIsWide)
+                {
+                    _widePages[secondIdx] = secondIsWide;
+                    spreadChanged = true;
+                }
+
+                if (firstIsWide || secondIsWide)
+                {
+                    secondDecoded?.Release();
+                    secondDecoded = null;
+                }
+
+                if (spreadChanged)
+                {
+                    RebuildComicSpreads();
+                }
+            }
+
             ReplaceDecoded(decoded);
+            ReplaceSecondDecoded(secondDecoded);
             StopAnimation();
             if (resetTransform)
             {
@@ -716,6 +1008,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _renderCts?.Cancel();
         _renderCts = new CancellationTokenSource();
         var ct = _renderCts.Token;
+
+        if (IsComicMode)
+        {
+            await RenderComicSpreadAsync(decoded, _secondDecoded, loadVersion, version, ct);
+            return;
+        }
 
         var layout = ComputeLayout(decoded);
         var transform = _transform;
@@ -839,7 +1137,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (_bitmapImageKey == decoded.Key && !_pendingNewImage)
+        if (IsComicMode)
+        {
+            if (_bitmapImageKey == decoded.Key && !_pendingNewImage)
+            {
+                var (firstLayout, secondLayout) = ComputeComicLayouts(decoded, _secondDecoded);
+                var spread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+                var isWideSingle = IsCurrentWideSingle(decoded, _secondDecoded);
+                var trailingBlank = !isWideSingle && _secondDecoded is null && (spread?.TrailingBlank ?? false);
+                AssignComicLayoutSizes(firstLayout, secondLayout, isWideSingle, trailingBlank);
+                ApplyComicDimensions(firstLayout.Scale);
+            }
+        }
+        else if (_bitmapImageKey == decoded.Key && !_pendingNewImage)
         {
             ApplyLayout(ComputeLayout(decoded));
         }
@@ -887,6 +1197,376 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var old = _decoded;
         _decoded = decoded;
         old?.Release();
+    }
+
+    private void ReplaceSecondDecoded(DecodedImage? decoded)
+    {
+        var old = _secondDecoded;
+        _secondDecoded = decoded;
+        old?.Release();
+    }
+
+    private void ClearComicPages()
+    {
+        LeftPageBitmap = null;
+        RightPageBitmap = null;
+        LeftPageWidth = 0;
+        LeftPageHeight = 0;
+        RightPageWidth = 0;
+        RightPageHeight = 0;
+        HasLeftPageSlot = false;
+        HasRightPageSlot = false;
+    }
+
+    private async Task<DecodedImage?> LoadOptionalSecondAsync(
+        IImageSource source,
+        ImageInfo info,
+        DecodeTarget? decodeTarget,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await _loader.LoadAsync(source, info, 0, decodeTarget, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "코믹 뷰어 두 번째 페이지 로드 실패: {Name}", info.Name);
+            return null;
+        }
+    }
+
+    private static bool IsCurrentWideSingle(DecodedImage first, DecodedImage? second) =>
+        second is null && ComicSpreadHelper.IsWideImage(first.OriginalWidth, first.OriginalHeight);
+
+    private (DisplayLayout First, DisplayLayout? Second) ComputeComicLayouts(DecodedImage first, DecodedImage? second)
+    {
+        var fullViewportW = Math.Max(1.0, _viewportWidth * _dpiScale);
+        var halfViewportW = Math.Max(1.0, fullViewportW / 2.0);
+        var viewportH = Math.Max(1.0, _viewportHeight * _dpiScale);
+
+        var (fw, fh) = DisplayedSize(first);
+        var firstTargetW = IsCurrentWideSingle(first, second) ? fullViewportW : halfViewportW;
+        var firstLayout = ImageResizeService.Calculate(DisplayMode, _zoomFactor, fw, fh, firstTargetW, viewportH);
+
+        DisplayLayout? secondLayout = null;
+        if (second is not null)
+        {
+            var (sw, sh) = DisplayedSize(second);
+            secondLayout = ImageResizeService.Calculate(DisplayMode, _zoomFactor, sw, sh, halfViewportW, viewportH);
+        }
+
+        return (firstLayout, secondLayout);
+    }
+
+    private void AssignComicLayoutSizes(
+        DisplayLayout firstLayout,
+        DisplayLayout? secondLayout,
+        bool isWideSingle = false,
+        bool trailingBlank = false)
+    {
+        var fw = firstLayout.DisplayPixelWidth / _dpiScale;
+        var fh = firstLayout.DisplayPixelHeight / _dpiScale;
+        var sw = secondLayout is { } sl ? sl.DisplayPixelWidth / _dpiScale : 0;
+        var sh = secondLayout is { } sl2 ? sl2.DisplayPixelHeight / _dpiScale : 0;
+
+        if (isWideSingle)
+        {
+            LeftPageWidth = fw;
+            LeftPageHeight = fh;
+            RightPageWidth = 0;
+            RightPageHeight = 0;
+            HasLeftPageSlot = true;
+            HasRightPageSlot = false;
+            return;
+        }
+
+        // 논리적 Slot1(앞), Slot2(뒤): 수동 빈 페이지가 있으면 실물 페이지와 같은 크기로 자리를 확보한다.
+        var slot1W = fw;
+        var slot1H = fh;
+        var hasSlot1 = true;
+        var slot2W = trailingBlank ? fw : sw;
+        var slot2H = trailingBlank ? fh : sh;
+        var hasSlot2 = trailingBlank || secondLayout is not null;
+
+        if (ComicDirection == ComicReadingDirection.RightToLeft)
+        {
+            LeftPageWidth = slot2W;
+            LeftPageHeight = slot2H;
+            HasLeftPageSlot = hasSlot2;
+            RightPageWidth = slot1W;
+            RightPageHeight = slot1H;
+            HasRightPageSlot = hasSlot1;
+        }
+        else
+        {
+            LeftPageWidth = slot1W;
+            LeftPageHeight = slot1H;
+            HasLeftPageSlot = hasSlot1;
+            RightPageWidth = slot2W;
+            RightPageHeight = slot2H;
+            HasRightPageSlot = hasSlot2;
+        }
+    }
+
+    private void ApplyComicDimensions(double? scale = null)
+    {
+        DisplayWidth = LeftPageWidth + RightPageWidth;
+        DisplayHeight = Math.Max(LeftPageHeight, RightPageHeight);
+        if (scale is { } s)
+        {
+            Scale = s;
+        }
+
+        var isNew = _pendingNewImage;
+        _pendingNewImage = false;
+        LayoutChanged?.Invoke(this, new LayoutChangedEventArgs(isNew));
+    }
+
+    private async Task RenderComicSpreadAsync(
+        DecodedImage first,
+        DecodedImage? second,
+        int loadVersion,
+        int version,
+        CancellationToken ct)
+    {
+        var (firstLayout, secondLayout) = ComputeComicLayouts(first, second);
+        var transform = _transform;
+
+        try
+        {
+            var firstTask = _renderer.RenderAsync(
+                first, firstLayout.RenderPixelWidth, firstLayout.RenderPixelHeight, Filter, transform, ct);
+            Task<Bitmap?> secondTask = second is not null && secondLayout is { } sl
+                ? RenderOptionalSecondAsync(second, sl, transform, ct)
+                : Task.FromResult<Bitmap?>(null);
+
+            await Task.WhenAll((Task)firstTask, secondTask);
+            var firstBmp = await firstTask;
+            var secondBmp = await secondTask;
+
+            if (!IsComicMode ||
+                version != _renderVersion ||
+                loadVersion != _loadVersion ||
+                !ReferenceEquals(first, _decoded) ||
+                CurrentImage is null ||
+                first.Info.Key != CurrentImage.Key)
+            {
+                return;
+            }
+
+            var (latestFirst, latestSecond) = ComputeComicLayouts(first, second);
+            var spread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+            var isWideSingle = IsCurrentWideSingle(first, second);
+            var trailingBlank = !isWideSingle && second is null && (spread?.TrailingBlank ?? false);
+            StopAnimation();
+            CurrentBitmap = firstBmp;
+
+            if (isWideSingle)
+            {
+                LeftPageBitmap = firstBmp;
+                RightPageBitmap = null;
+            }
+            else
+            {
+                var slot2Bmp = trailingBlank ? null : secondBmp;
+                if (ComicDirection == ComicReadingDirection.RightToLeft)
+                {
+                    LeftPageBitmap = slot2Bmp;
+                    RightPageBitmap = firstBmp;
+                }
+                else
+                {
+                    LeftPageBitmap = firstBmp;
+                    RightPageBitmap = slot2Bmp;
+                }
+            }
+
+            IsShowingPlaceholder = false;
+            FrameInfoText = null;
+            _bitmapImageKey = first.Key;
+            ErrorMessage = null;
+            AssignComicLayoutSizes(latestFirst, latestSecond, isWideSingle, trailingBlank);
+            ApplyComicDimensions(latestFirst.Scale);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+            if (loadVersion == _loadVersion && ReferenceEquals(first, _decoded))
+            {
+                ReplaceDecoded(null);
+                ReplaceSecondDecoded(null);
+                _ = LoadCurrentAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (version == _renderVersion && CurrentImage is { } info)
+            {
+                _logger.LogError(ex, "코믹 렌더링 실패: {Name}", info.Name);
+                ShowError(info, "이미지를 표시용으로 변환하지 못했습니다.");
+            }
+        }
+    }
+
+    private async Task<Bitmap?> RenderOptionalSecondAsync(
+        DecodedImage second,
+        DisplayLayout layout,
+        ImageTransform transform,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await _renderer.RenderAsync(second, layout.RenderPixelWidth, layout.RenderPixelHeight, Filter, transform, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "코믹 뷰어 두 번째 페이지 렌더링 실패: {Name}", second.Info.Name);
+            return null;
+        }
+    }
+
+    private void RebuildComicSpreads()
+    {
+        _comicSpreads = ComicSpreadHelper.BuildSpreads(_images.Count, _widePages, _manualComicBlanks);
+        RebuildComicThumbnails();
+        OnPropertyChanged(nameof(PositionText));
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(ComicThumbnailSelectedIndex));
+        OnPropertyChanged(nameof(HasManualComicBlanks));
+        OnPropertyChanged(nameof(IsCurrentSpreadManualBlank));
+        OnPropertyChanged(nameof(ComicBlankButtonText));
+    }
+
+    private void RebuildComicThumbnails()
+    {
+        foreach (var old in ComicThumbnailItems)
+        {
+            old.Detach();
+        }
+
+        if (_comicSpreads.Count == 0 && ThumbnailItems.Count > 0)
+        {
+            _comicSpreads = ComicSpreadHelper.BuildSpreads(ThumbnailItems.Count, _widePages, _manualComicBlanks);
+        }
+
+        var pairs = new List<ComicThumbnailItemViewModel>(_comicSpreads.Count);
+        var currentSpread = ComicSpreadHelper.FindSpreadIndex(_comicSpreads, CurrentIndex);
+        foreach (var spread in _comicSpreads)
+        {
+            if (spread.FirstIndex >= ThumbnailItems.Count)
+            {
+                continue;
+            }
+
+            var first = ThumbnailItems[spread.FirstIndex];
+            var second = spread.SecondIndex is { } s && s < ThumbnailItems.Count ? ThumbnailItems[s] : null;
+            pairs.Add(new ComicThumbnailItemViewModel(
+                spread.SpreadIndex,
+                first,
+                second,
+                ComicDirection,
+                spread.IsWideSingle,
+                spread.TrailingBlank)
+            {
+                IsCurrent = spread.SpreadIndex == currentSpread,
+            });
+        }
+
+        ComicThumbnailItems = new ObservableCollection<ComicThumbnailItemViewModel>(pairs);
+        OnPropertyChanged(nameof(ComicThumbnailSelectedIndex));
+    }
+
+    private void StartComicPageProbe()
+    {
+        var source = _source;
+        var images = _images;
+        if (source is null || images.Count == 0)
+        {
+            return;
+        }
+
+        _comicProbeCts?.Cancel();
+        _comicProbeCts = new CancellationTokenSource();
+        var ct = _comicProbeCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            var results = new bool[images.Count];
+            try
+            {
+                var options = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = source.Info.SourceType == ImageSourceType.File ? 4 : 1,
+                    CancellationToken = ct,
+                };
+                await Parallel.ForEachAsync(Enumerable.Range(0, images.Count), options, async (idx, token) =>
+                {
+                    results[idx] = await ComicSpreadHelper.ProbeIsWideAsync(source, images[idx], token).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "코믹 뷰어 이미지 크기 사전 확인 실패");
+                return;
+            }
+
+            _dispatcher.Post(() =>
+            {
+                if (ct.IsCancellationRequested || !ReferenceEquals(source, _source) || !ReferenceEquals(images, _images))
+                {
+                    return;
+                }
+
+                _comicPagesProbed = true;
+                var changed = false;
+                for (var i = 0; i < results.Length && i < _widePages.Length; i++)
+                {
+                    if (_widePages[i] != results[i])
+                    {
+                        _widePages[i] = results[i];
+                        changed = true;
+                    }
+                }
+
+                if (!changed)
+                {
+                    return;
+                }
+
+                var oldSpread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+                RebuildComicSpreads();
+                if (!IsComicMode || CurrentIndex < 0)
+                {
+                    return;
+                }
+
+                var newSpread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+                if (newSpread is not null &&
+                    (oldSpread?.FirstIndex != newSpread.FirstIndex ||
+                     oldSpread?.SecondIndex != newSpread.SecondIndex ||
+                     oldSpread?.IsWideSingle != newSpread.IsWideSingle ||
+                     oldSpread?.TrailingBlank != newSpread.TrailingBlank))
+                {
+                    _navigation.MoveTo(newSpread.FirstIndex);
+                    SetCurrent(newSpread.FirstIndex);
+                    _ = LoadCurrentAsync();
+                }
+            }, DispatcherPriority.Background);
+        }, ct);
     }
 
     private void CancelPending()
@@ -1106,6 +1786,93 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ToggleThumbnails() => ThumbnailsVisible = !ThumbnailsVisible;
 
     [RelayCommand]
+    private void ToggleComicMode() => IsComicMode = !IsComicMode;
+
+    [RelayCommand]
+    private void ToggleComicDirection() => ComicDirection =
+        ComicDirection == ComicReadingDirection.LeftToRight
+            ? ComicReadingDirection.RightToLeft
+            : ComicReadingDirection.LeftToRight;
+
+    [RelayCommand]
+    private void SetComicDirection(ComicReadingDirection direction) => ComicDirection = direction;
+
+    [RelayCommand]
+    private void ToggleComicBlankPage()
+    {
+        if (!IsComicMode)
+        {
+            ShowOsd("코믹 뷰어에서만 빈 페이지를 추가할 수 있습니다.");
+            return;
+        }
+
+        if (_images.Count == 0 || CurrentIndex < 0)
+        {
+            return;
+        }
+
+        var spread = ComicSpreadHelper.FindSpread(_comicSpreads, CurrentIndex);
+        if (spread is null)
+        {
+            return;
+        }
+
+        if (spread.IsWideSingle)
+        {
+            ShowOsd("양면 이미지에는 빈 페이지를 넣을 수 없습니다.");
+            return;
+        }
+
+        if (_manualComicBlanks.Remove(spread.FirstIndex))
+        {
+            RebuildComicSpreads();
+            _navigation.MoveTo(spread.FirstIndex);
+            SetCurrent(spread.FirstIndex);
+            ShowOsd($"{spread.FirstIndex + 1}p 뒤 빈 페이지 제거");
+            _ = LoadCurrentAsync();
+            return;
+        }
+
+        if (spread.SecondIndex is null)
+        {
+            ShowOsd("2페이지가 함께 표시된 화면에서만 빈 페이지를 넣을 수 있습니다.");
+            return;
+        }
+
+        _manualComicBlanks.Add(spread.FirstIndex);
+        RebuildComicSpreads();
+        _navigation.MoveTo(spread.FirstIndex);
+        SetCurrent(spread.FirstIndex);
+        ShowOsd($"{spread.FirstIndex + 1}p 뒤에 빈 페이지 삽입");
+        _ = LoadCurrentAsync();
+    }
+
+    [RelayCommand]
+    private void ClearComicBlankPages()
+    {
+        if (_manualComicBlanks.Count == 0)
+        {
+            ShowOsd("초기화할 빈 페이지가 없습니다.");
+            return;
+        }
+
+        _manualComicBlanks.Clear();
+        RebuildComicSpreads();
+        if (IsComicMode && CurrentIndex >= 0)
+        {
+            var start = ComicSpreadHelper.GetSpreadStart(_comicSpreads, CurrentIndex);
+            if (start >= 0)
+            {
+                _navigation.MoveTo(start);
+                SetCurrent(start);
+                _ = LoadCurrentAsync();
+            }
+        }
+
+        ShowOsd("수동 빈 페이지 모두 초기화");
+    }
+
+    [RelayCommand]
     private async Task ShowImageListAsync()
     {
         if (_images.Count == 0)
@@ -1114,7 +1881,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var vm = new ImageListViewModel(_images, CurrentIndex, SourceInfo, ThumbnailItems);
+        var vm = new ImageListViewModel(
+            _images,
+            CurrentIndex,
+            SourceInfo,
+            ThumbnailItems,
+            isComicMode: IsComicMode,
+            comicDirection: ComicDirection,
+            comicThumbnails: ComicThumbnailItems,
+            comicSpreads: _comicSpreads);
         if (_dialogs.ShowImageList(vm) && vm.ResultIndex is { } index)
         {
             await GoToAsync(index);
@@ -1140,7 +1915,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SlideShowRepeat));
         OnPropertyChanged(nameof(ThumbnailsVisible));
         OnPropertyChanged(nameof(ShowThumbnailStrip));
+        OnPropertyChanged(nameof(ShowSingleThumbnails));
+        OnPropertyChanged(nameof(ShowComicThumbnails));
         OnPropertyChanged(nameof(ThumbnailSize));
+        OnPropertyChanged(nameof(ComicThumbnailWidth));
+        OnPropertyChanged(nameof(ComicThumbnailWideWidth));
         OnPropertyChanged(nameof(ThumbnailScrollBarVisibility));
         OnPropertyChanged(nameof(Background));
         OnPropertyChanged(nameof(MouseWheelAction));
@@ -1162,6 +1941,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _loadedThumbnails.Clear();
             ThumbnailItems = new ObservableCollection<ThumbnailItemViewModel>(
                 _images.Select((info, i) => new ThumbnailItemViewModel(i, info, RequestThumbnail) { IsCurrent = i == CurrentIndex }));
+            RebuildComicThumbnails();
         }
     }
 
@@ -1201,10 +1981,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         DetachWatcher(_source);
+        _comicProbeCts?.Cancel();
         CancelPending();
         _slideShow.Dispose();
         _thumbnails.CancelAll();
+        foreach (var item in ComicThumbnailItems)
+        {
+            item.Detach();
+        }
+
         ReplaceDecoded(null);
+        ReplaceSecondDecoded(null);
         _loader.Dispose();
         _renderer.ClearCache();
         _source?.Dispose();

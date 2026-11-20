@@ -36,6 +36,9 @@ public enum ShortcutAction
     FlipHorizontal,
     FlipVertical,
     ToggleInfoPanel,
+    ToggleComicMode,
+    ToggleComicDirection,
+    ToggleComicBlankPage,
 }
 
 public static class KeyboardHelper
@@ -68,6 +71,9 @@ public static class KeyboardHelper
             Key.H => ShortcutAction.FlipHorizontal,
             Key.V => ShortcutAction.FlipVertical,
             Key.Tab => ShortcutAction.ToggleInfoPanel,
+            Key.C => ShortcutAction.ToggleComicMode,
+            Key.D => ShortcutAction.ToggleComicDirection,
+            Key.B => ShortcutAction.ToggleComicBlankPage,
             Key.Home => ShortcutAction.First,
             Key.End => ShortcutAction.Last,
             Key.Enter or Key.Return => ShortcutAction.OpenImageList,

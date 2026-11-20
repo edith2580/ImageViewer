@@ -102,6 +102,22 @@
                               Command="{Binding ToggleInfoPanelCommand}"
                               IsChecked="{Binding IsInfoPanelVisible, Mode=OneWay}" />
                     <Separator />
+                    <MenuItem Header="코믹 뷰어 (2페이지 보기)" InputGesture="C" ToggleType="CheckBox"
+                              Command="{Binding ToggleComicModeCommand}"
+                              IsChecked="{Binding IsComicMode, Mode=OneWay}" />
+                    <MenuItem Header="코믹 방향: 좌 → 우 [1p, 2p]" ToggleType="CheckBox"
+                              Command="{Binding SetComicDirectionCommand}" CommandParameter="{x:Static models:ComicReadingDirection.LeftToRight}"
+                              IsChecked="{Binding ComicDirection, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=LeftToRight}" />
+                    <MenuItem Header="코믹 방향: 우 → 좌 [2p, 1p]" ToggleType="CheckBox"
+                              Command="{Binding SetComicDirectionCommand}" CommandParameter="{x:Static models:ComicReadingDirection.RightToLeft}"
+                              IsChecked="{Binding ComicDirection, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=RightToLeft}" />
+                    <MenuItem Header="코믹: 빈 페이지 삽입 / 제거" InputGesture="B"
+                              Command="{Binding ToggleComicBlankPageCommand}"
+                              IsEnabled="{Binding IsComicMode}" />
+                    <MenuItem Header="코믹: 빈 페이지 모두 초기화"
+                              Command="{Binding ClearComicBlankPagesCommand}"
+                              IsEnabled="{Binding HasManualComicBlanks}" />
+                    <Separator />
                     <MenuItem Header="슬라이드쇼 재생 / 일시정지" InputGesture="Space" ToggleType="CheckBox"
                               Command="{Binding ToggleSlideShowCommand}"
                               IsChecked="{Binding IsSlideShowPlaying, Mode=OneWay}" />
@@ -117,13 +133,41 @@
             </Panel.ContextMenu>
 
             <Canvas x:Name="ImageCanvas">
-                <Image x:Name="DisplayImage"
-                       Source="{Binding CurrentBitmap}"
+                <Panel x:Name="DisplaySurface"
                        Width="{Binding DisplayWidth}"
-                       Height="{Binding DisplayHeight}"
-                       Stretch="Fill"
-                       RenderOptions.BitmapInterpolationMode="HighQuality"
-                       Classes.placeholder="{Binding IsShowingPlaceholder}" />
+                       Height="{Binding DisplayHeight}">
+                    <Image x:Name="DisplayImage"
+                           IsVisible="{Binding !IsComicMode}"
+                           Source="{Binding CurrentBitmap}"
+                           Width="{Binding DisplayWidth}"
+                           Height="{Binding DisplayHeight}"
+                           Stretch="Fill"
+                           RenderOptions.BitmapInterpolationMode="HighQuality"
+                           Classes.placeholder="{Binding IsShowingPlaceholder}" />
+                    <StackPanel x:Name="ComicSpreadPanel"
+                                IsVisible="{Binding IsComicMode}"
+                                Orientation="Horizontal"
+                                Spacing="0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <Grid Width="{Binding LeftPageWidth}"
+                              Height="{Binding LeftPageHeight}"
+                              IsVisible="{Binding HasLeftPageSlot}">
+                            <Image Source="{Binding LeftPageBitmap}"
+                                   Stretch="Fill"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                                   IsVisible="{Binding LeftPageBitmap, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                        <Grid Width="{Binding RightPageWidth}"
+                              Height="{Binding RightPageHeight}"
+                              IsVisible="{Binding HasRightPageSlot}">
+                            <Image Source="{Binding RightPageBitmap}"
+                                   Stretch="Fill"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                                   IsVisible="{Binding RightPageBitmap, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                    </StackPanel>
+                </Panel>
             </Canvas>
 
             <TextBlock Text="{Binding PlaceholderMessage}"
@@ -201,9 +245,10 @@
                 <Grid Width="44" Height="44">
                     <Ellipse Stroke="#33FFFFFF" StrokeThickness="4" />
                     <Path Classes="Spinner"
+                          Width="44" Height="44"
                           Stroke="{StaticResource AccentBrush}" StrokeThickness="4"
                           StrokeLineCap="Round"
-                          RenderTransformOrigin="0.5,0.5"
+                          RenderTransformOrigin="50%,50%"
                           Data="M 22,2 A 20,20 0 0 1 42,22">
                         <Path.RenderTransform>
                             <RotateTransform Angle="0" />
@@ -333,6 +378,22 @@
                                       IsChecked="{Binding BottomBarPinned, Mode=OneWay}" />
                             <MenuItem Header="썸네일 표시(_T)" ToggleType="CheckBox" IsChecked="{Binding ThumbnailsVisible}" />
                             <Separator />
+                            <MenuItem Header="코믹 뷰어 (2페이지 보기)" InputGesture="C" ToggleType="CheckBox"
+                                      Command="{Binding ToggleComicModeCommand}"
+                                      IsChecked="{Binding IsComicMode, Mode=OneWay}" />
+                            <MenuItem Header="코믹 방향: 좌 → 우 [1p, 2p]" InputGesture="D" ToggleType="CheckBox"
+                                      Command="{Binding SetComicDirectionCommand}" CommandParameter="{x:Static models:ComicReadingDirection.LeftToRight}"
+                                      IsChecked="{Binding ComicDirection, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=LeftToRight}" />
+                            <MenuItem Header="코믹 방향: 우 → 좌 [2p, 1p]" ToggleType="CheckBox"
+                                      Command="{Binding SetComicDirectionCommand}" CommandParameter="{x:Static models:ComicReadingDirection.RightToLeft}"
+                                      IsChecked="{Binding ComicDirection, Mode=OneWay, Converter={StaticResource EnumEquals}, ConverterParameter=RightToLeft}" />
+                            <MenuItem Header="코믹: 빈 페이지 삽입 / 제거" InputGesture="B"
+                                      Command="{Binding ToggleComicBlankPageCommand}"
+                                      IsEnabled="{Binding IsComicMode}" />
+                            <MenuItem Header="코믹: 빈 페이지 모두 초기화"
+                                      Command="{Binding ClearComicBlankPagesCommand}"
+                                      IsEnabled="{Binding HasManualComicBlanks}" />
+                            <Separator />
                             <MenuItem Header="전체 화면(_U)" InputGesture="Alt+Enter" ToggleType="CheckBox"
                                       Command="{Binding ToggleFullScreenCommand}"
                                       IsChecked="{Binding IsFullScreen, Mode=OneWay}" />
@@ -444,6 +505,25 @@
                             <PathIcon Data="{StaticResource IconZoomIn}" />
                         </Button>
                         <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
+                        <ToggleButton Classes="ComicToggleButton"
+                                      IsChecked="{Binding IsComicMode}"
+                                      ToolTip.Tip="코믹 뷰어 (2페이지 보기) (C)" />
+                        <Button Classes="ToolButton"
+                                FontSize="11"
+                                Padding="6,0"
+                                Margin="2,0,0,0"
+                                Content="{Binding ComicDirectionText}"
+                                IsVisible="{Binding IsComicMode}"
+                                Command="{Binding ToggleComicDirectionCommand}"
+                                ToolTip.Tip="코믹 페이지 방향 전환: 좌→우 [1p,2p] / 우→좌 [2p,1p] (D)" />
+                        <Button Classes="ToolButton"
+                                FontSize="11"
+                                Padding="6,0"
+                                Margin="2,0,0,0"
+                                Content="{Binding ComicBlankButtonText}"
+                                IsVisible="{Binding IsComicMode}"
+                                Command="{Binding ToggleComicBlankPageCommand}"
+                                ToolTip.Tip="현재 2페이지 사이에 빈 페이지 삽입 / 제거 (B)" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -477,7 +557,7 @@
                 <ListBox x:Name="ThumbnailList"
                          Classes="ThumbnailList"
                          Margin="0,6,0,0"
-                         IsVisible="{Binding ShowThumbnailStrip}"
+                         IsVisible="{Binding ShowSingleThumbnails}"
                          ItemsSource="{Binding ThumbnailItems}"
                          SelectedIndex="{Binding ThumbnailSelectedIndex, Mode=TwoWay}"
                          Focusable="False"
@@ -503,6 +583,67 @@
                                     <Image Source="{Binding Thumbnail}" Stretch="Uniform"
                                            RenderOptions.BitmapInterpolationMode="HighQuality" />
                                 </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <ListBox x:Name="ComicThumbnailList"
+                         Classes="ThumbnailList"
+                         Margin="0,6,0,0"
+                         IsVisible="{Binding ShowComicThumbnails}"
+                         ItemsSource="{Binding ComicThumbnailItems}"
+                         SelectedIndex="{Binding ComicThumbnailSelectedIndex, Mode=TwoWay}"
+                         Focusable="False"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="{Binding ThumbnailScrollBarVisibility}"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         ScrollViewer.AllowAutoHide="False">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ComicThumbnailItemViewModel}">
+                            <Border Classes="ThumbCard" Classes.current="{Binding IsCurrent}" ToolTip.Tip="{Binding ToolTip}">
+                                <Panel Height="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <Grid Width="{Binding ((vm:MainViewModel)DataContext).ComicThumbnailWideWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          Height="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          IsVisible="{Binding IsWideSingle}">
+                                        <TextBlock Text="{Binding WideName}" Foreground="#FF808080" FontSize="9"
+                                                   IsVisible="{Binding WideThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                        <Image Source="{Binding WideThumbnail}" Stretch="Uniform"
+                                               HorizontalAlignment="Center"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsTwoPagePair}">
+                                        <Grid Width="{Binding ((vm:MainViewModel)DataContext).ComicThumbnailWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              Height="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              IsVisible="{Binding HasLeft}">
+                                            <TextBlock Text="{Binding LeftName}" Foreground="#FF808080" FontSize="9"
+                                                       IsVisible="{Binding LeftThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                            <Image Source="{Binding LeftThumbnail}" Stretch="Uniform"
+                                                   HorizontalAlignment="Right"
+                                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                        </Grid>
+                                        <Grid Width="{Binding ((vm:MainViewModel)DataContext).ComicThumbnailWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              Height="{Binding ((vm:MainViewModel)DataContext).ThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                              IsVisible="{Binding HasRight}">
+                                            <TextBlock Text="{Binding RightName}" Foreground="#FF808080" FontSize="9"
+                                                       IsVisible="{Binding RightThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                            <Image Source="{Binding RightThumbnail}" Stretch="Uniform"
+                                                   HorizontalAlignment="Left"
+                                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Panel>
                             </Border>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

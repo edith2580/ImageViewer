@@ -44,3 +44,13 @@ public enum ViewerBackground
     White,
     Checkerboard,
 }
+
+/// <summary>코믹 뷰어(2페이지 보기) 페이지 방향.</summary>
+public enum ComicReadingDirection
+{
+    /// <summary>좌 → 우 ([1p, 2p]).</summary>
+    LeftToRight,
+
+    /// <summary>우 → 좌 ([2p, 1p]).</summary>
+    RightToLeft,
+}

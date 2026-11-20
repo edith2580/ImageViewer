@@ -91,6 +91,8 @@ public partial class MainWindow : Window
 
         ThumbnailList.AddHandler(PointerWheelChangedEvent, OnThumbnailPointerWheelChanged, RoutingStrategies.Tunnel);
         ThumbnailList.AddHandler(PointerPressedEvent, OnThumbnailPointerPressed, RoutingStrategies.Tunnel);
+        ComicThumbnailList.AddHandler(PointerWheelChangedEvent, OnComicThumbnailPointerWheelChanged, RoutingStrategies.Tunnel);
+        ComicThumbnailList.AddHandler(PointerPressedEvent, OnComicThumbnailPointerPressed, RoutingStrategies.Tunnel);
 
         PropertyChanged += (_, e) =>
         {
@@ -198,6 +200,8 @@ public partial class MainWindow : Window
                 ScrollThumbnailIntoView();
                 break;
             case nameof(MainViewModel.ThumbnailItems):
+            case nameof(MainViewModel.ComicThumbnailItems):
+            case nameof(MainViewModel.IsComicMode):
                 Dispatcher.UIThread.Post(ScrollThumbnailIntoView, DispatcherPriority.Loaded);
                 break;
         }
@@ -456,6 +460,15 @@ public partial class MainWindow : Window
             case ShortcutAction.ToggleInfoPanel:
                 _vm.ToggleInfoPanelCommand.Execute(null);
                 break;
+            case ShortcutAction.ToggleComicMode:
+                _vm.ToggleComicModeCommand.Execute(null);
+                break;
+            case ShortcutAction.ToggleComicDirection:
+                _vm.ToggleComicDirectionCommand.Execute(null);
+                break;
+            case ShortcutAction.ToggleComicBlankPage:
+                _vm.ToggleComicBlankPageCommand.Execute(null);
+                break;
             case ShortcutAction.Previous:
                 _vm.PreviousCommand.Execute(null);
                 break;
@@ -573,8 +586,8 @@ public partial class MainWindow : Window
         _offsetX = w <= vw ? (vw - w) / 2 : Math.Clamp(_offsetX, vw - w, 0);
         _offsetY = h <= vh ? (vh - h) / 2 : Math.Clamp(_offsetY, vh - h, 0);
 
-        Canvas.SetLeft(DisplayImage, _offsetX);
-        Canvas.SetTop(DisplayImage, _offsetY);
+        Canvas.SetLeft(DisplaySurface, _offsetX);
+        Canvas.SetTop(DisplaySurface, _offsetY);
 
         Viewport.Cursor = _isDragging
             ? new Cursor(StandardCursorType.SizeAll)
@@ -740,16 +753,27 @@ public partial class MainWindow : Window
 
     private void ScrollThumbnailIntoView()
     {
-        var index = _vm.CurrentIndex;
-        var count = ThumbnailList.Items.Count;
-        if (index < 0 || index >= count || !ThumbnailList.IsVisible)
+        if (_vm.IsComicMode)
+        {
+            ScrollListBoxCentered(ComicThumbnailList, _vm.ComicThumbnailSelectedIndex);
+        }
+        else
+        {
+            ScrollListBoxCentered(ThumbnailList, _vm.CurrentIndex);
+        }
+    }
+
+    private static void ScrollListBoxCentered(ListBox listBox, int index)
+    {
+        var count = listBox.Items.Count;
+        if (index < 0 || index >= count || !listBox.IsVisible)
         {
             return;
         }
 
-        ThumbnailList.ScrollIntoView(index);
+        listBox.ScrollIntoView(index);
 
-        if (ThumbnailList.FindDescendantOfType<ScrollViewer>() is { } scroll)
+        if (listBox.FindDescendantOfType<ScrollViewer>() is { } scroll)
         {
             var extentWidth = scroll.Extent.Width;
             var viewportWidth = scroll.Viewport.Width;
@@ -779,9 +803,31 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    private void OnComicThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (ThumbnailList.FindDescendantOfType<ScrollViewer>() is { } scroll)
+        if (!e.GetCurrentPoint(ComicThumbnailList).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (e.Source is Control source &&
+            source.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { DataContext: ComicThumbnailItemViewModel item })
+        {
+            e.Handled = true;
+            _ = _vm.GoToAsync(item.StartIndex);
+            Viewport.Focus();
+        }
+    }
+
+    private void OnThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e) =>
+        ScrollListBoxByWheel(ThumbnailList, e);
+
+    private void OnComicThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e) =>
+        ScrollListBoxByWheel(ComicThumbnailList, e);
+
+    private static void ScrollListBoxByWheel(ListBox listBox, PointerWheelEventArgs e)
+    {
+        if (listBox.FindDescendantOfType<ScrollViewer>() is { } scroll)
         {
             scroll.Offset = new Vector(
                 Math.Max(0, scroll.Offset.X - e.Delta.Y * 48),

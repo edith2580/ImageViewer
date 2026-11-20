@@ -21,6 +21,8 @@ public partial class ImageListWindow : Window
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         ThumbnailStrip.AddHandler(PointerWheelChangedEvent, OnThumbnailPointerWheelChanged, RoutingStrategies.Tunnel);
         ThumbnailStrip.AddHandler(PointerPressedEvent, OnThumbnailPointerPressed, RoutingStrategies.Tunnel);
+        ComicThumbnailStrip.AddHandler(PointerWheelChangedEvent, OnComicThumbnailPointerWheelChanged, RoutingStrategies.Tunnel);
+        ComicThumbnailStrip.AddHandler(PointerPressedEvent, OnComicThumbnailPointerPressed, RoutingStrategies.Tunnel);
     }
 
     private void OnOpened(object? sender, EventArgs e)
@@ -41,15 +43,31 @@ public partial class ImageListWindow : Window
     private void OnListSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         // 목록에서 선택하면 썸네일 줄도 해당 위치로 스크롤한다.
-        var index = _vm.SelectedThumbnailIndex;
-        if (index >= 0 && index < ThumbnailStrip.Items.Count)
-        {
-            ThumbnailStrip.ScrollIntoView(index);
-        }
+        ScrollActiveThumbnailStrip();
 
         if (_vm.SelectedItem is { } item && !List.IsKeyboardFocusWithin)
         {
             List.ScrollIntoView(item);
+        }
+    }
+
+    private void ScrollActiveThumbnailStrip()
+    {
+        if (_vm.IsComicMode)
+        {
+            var spreadIndex = _vm.SelectedComicThumbnailIndex;
+            if (spreadIndex >= 0 && spreadIndex < ComicThumbnailStrip.Items.Count)
+            {
+                ComicThumbnailStrip.ScrollIntoView(spreadIndex);
+            }
+        }
+        else
+        {
+            var index = _vm.SelectedThumbnailIndex;
+            if (index >= 0 && index < ThumbnailStrip.Items.Count)
+            {
+                ThumbnailStrip.ScrollIntoView(index);
+            }
         }
     }
 
@@ -66,11 +84,7 @@ public partial class ImageListWindow : Window
         }
 
         List.ScrollIntoView(item);
-        var index = _vm.SelectedThumbnailIndex;
-        if (index >= 0 && index < ThumbnailStrip.Items.Count)
-        {
-            ThumbnailStrip.ScrollIntoView(index);
-        }
+        ScrollActiveThumbnailStrip();
 
         if (!focusList)
         {
@@ -91,9 +105,15 @@ public partial class ImageListWindow : Window
         }, DispatcherPriority.Loaded);
     }
 
-    private void OnThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    private void OnThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e) =>
+        ScrollStripByWheel(ThumbnailStrip, e);
+
+    private void OnComicThumbnailPointerWheelChanged(object? sender, PointerWheelEventArgs e) =>
+        ScrollStripByWheel(ComicThumbnailStrip, e);
+
+    private static void ScrollStripByWheel(ListBox strip, PointerWheelEventArgs e)
     {
-        if (ThumbnailStrip.FindDescendantOfType<ScrollViewer>() is { } scroll)
+        if (strip.FindDescendantOfType<ScrollViewer>() is { } scroll)
         {
             scroll.Offset = new Avalonia.Vector(
                 Math.Max(0, scroll.Offset.X - e.Delta.Y * 48),
@@ -102,10 +122,6 @@ public partial class ImageListWindow : Window
         }
     }
 
-    /// <summary>
-    /// 썸네일 클릭 → 목록에서 선택, 더블클릭 → 열기.
-    /// (포커스를 받지 않는 항목은 ListBox 가 클릭을 선택으로 처리하지 않으므로 직접 처리한다)
-    /// </summary>
     private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(ThumbnailStrip).Properties.IsLeftButtonPressed)
@@ -121,6 +137,27 @@ public partial class ImageListWindow : Window
 
         e.Handled = true;
         _vm.SelectedThumbnailIndex = item.Index;
+        if (e.ClickCount == 2)
+        {
+            Accept();
+        }
+    }
+
+    private void OnComicThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(ComicThumbnailStrip).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (e.Source is not Control source ||
+            source.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { DataContext: ComicThumbnailItemViewModel item })
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _vm.SelectedComicThumbnailIndex = item.SpreadIndex;
         if (e.ClickCount == 2)
         {
             Accept();

@@ -98,6 +98,12 @@ public sealed class DisplaySettings
 
     /// <summary>휠: 기본은 위 = 이전 이미지, 아래 = 다음 이미지 (Ctrl+휠은 확대/축소).</summary>
     public MouseWheelAction MouseWheel { get; set; } = MouseWheelAction.Navigate;
+
+    /// <summary>코믹 뷰어(2페이지 보기) 활성화 여부.</summary>
+    public bool ComicMode { get; set; }
+
+    /// <summary>코믹 뷰어 페이지 방향 (좌→우 [1p, 2p] 또는 우→좌 [2p, 1p]).</summary>
+    public ComicReadingDirection ComicDirection { get; set; } = ComicReadingDirection.LeftToRight;
 }
 
 public sealed class NavigationSettings

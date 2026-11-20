@@ -57,6 +57,8 @@ public class NewShortcutTests
     [InlineData(Key.PageDown, ShortcutAction.NextPage)]
     [InlineData(Key.OemOpenBrackets, ShortcutAction.PreviousSource)]
     [InlineData(Key.OemCloseBrackets, ShortcutAction.NextSource)]
+    [InlineData(Key.C, ShortcutAction.ToggleComicMode)]
+    [InlineData(Key.D, ShortcutAction.ToggleComicDirection)]
     public void Maps_feature_shortcuts(Key key, ShortcutAction expected) =>
         Assert.Equal(expected, KeyboardHelper.GetAction(key, KeyModifiers.None));
 

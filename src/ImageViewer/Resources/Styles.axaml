@@ -374,6 +374,45 @@
         <Setter Property="Foreground" Value="#FF7DB4FF" />
     </Style>
 
+    <!-- 코믹 뷰어(2페이지 보기) 토글 버튼 -->
+    <Style Selector="ToggleButton.ComicToggleButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource PanelForeground}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <PathIcon Data="M2,4 C5,3 8.5,3.5 11.5,5.5 L11.5,19.5 C8.5,17.8 5,17.3 2,18 Z M22,4 C19,3 15.5,3.5 12.5,5.5 L12.5,19.5 C15.5,17.8 19,17.3 22,18 Z"
+                              Width="15" Height="15"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ToggleButton.ComicToggleButton:pointerover">
+        <Setter Property="Background" Value="{StaticResource HoverBrush}" />
+        <Setter Property="Foreground" Value="#FF7DB4FF" />
+    </Style>
+    <Style Selector="ToggleButton.ComicToggleButton:checked">
+        <Setter Property="Background" Value="#263D8BFD" />
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.ComicToggleButton:checked:pointerover">
+        <Setter Property="Background" Value="#383D8BFD" />
+        <Setter Property="Foreground" Value="#FF7DB4FF" />
+    </Style>
+
     <!-- 상단 메뉴바의 최상위 메뉴 -->
     <Style Selector="Menu.TopMenu > MenuItem">
         <Setter Property="Foreground" Value="#FFE6E6E6" />

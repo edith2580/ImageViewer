@@ -899,7 +899,15 @@ public sealed partial class MainViewModel
 
         // CurrentIndex 가 가리키던 이전 항목의 표시를 SetCurrent 가 지우지 않도록 먼저 목록을 바꾼다.
         CurrentIndex = -1;
+        _widePages = new bool[images.Count];
+        _manualComicBlanks.Clear();
+        _comicPagesProbed = false;
         ThumbnailItems = new ObservableCollection<ThumbnailItemViewModel>(items);
+        RebuildComicSpreads();
+        if (IsComicMode)
+        {
+            StartComicPageProbe();
+        }
     }
 
     #endregion

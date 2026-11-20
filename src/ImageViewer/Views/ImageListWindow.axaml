@@ -5,24 +5,24 @@
         x:DataType="vm:ImageListViewModel"
         Title="{Binding Title}"
         Icon="avares://ImageViewer/Resources/ImageViewer.ico"
-        Width="760" Height="640" MinWidth="440" MinHeight="380"
+        Width="780" Height="640" MinWidth="440" MinHeight="380"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Window.Styles>
-        <Style Selector="ListBox#ThumbnailStrip ListBoxItem">
+        <Style Selector="ListBox.DialogThumbStrip ListBoxItem">
             <Setter Property="Focusable" Value="False" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="2,0" />
             <Setter Property="Background" Value="Transparent" />
         </Style>
-        <Style Selector="ListBox#ThumbnailStrip ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="ListBox.DialogThumbStrip ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
         </Style>
-        <Style Selector="ListBox#ThumbnailStrip ListBoxItem:selected Border.ThumbCard">
+        <Style Selector="ListBox.DialogThumbStrip ListBoxItem:selected Border.ThumbCard">
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
             <Setter Property="Background" Value="#FF203450" />
         </Style>
-        <Style Selector="ListBox#ThumbnailStrip ListBoxItem:pointerover Border.ThumbCard">
+        <Style Selector="ListBox.DialogThumbStrip ListBoxItem:pointerover Border.ThumbCard">
             <Setter Property="BorderBrush" Value="#FF777777" />
         </Style>
 
@@ -47,42 +47,106 @@
     </Window.Styles>
 
     <DockPanel Margin="10">
-        <!-- 상단 썸네일 줄 -->
+        <!-- 상단 썸네일 줄 (일반 1페이지 / 코믹 2페이지 연결) -->
         <Border DockPanel.Dock="Top" Background="#FF1E1E1E" CornerRadius="6" Padding="6,6,6,2" Margin="0,0,0,10"
                 IsVisible="{Binding HasThumbnails}">
-            <ListBox x:Name="ThumbnailStrip"
-                     ItemsSource="{Binding Thumbnails}"
-                     SelectedIndex="{Binding SelectedThumbnailIndex, Mode=TwoWay}"
-                     Focusable="False"
-                     Background="Transparent" BorderThickness="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:ThumbnailItemViewModel}">
-                        <Grid>
-                            <Border Classes="ThumbCard" BorderThickness="2" BorderBrush="Transparent" CornerRadius="4"
-                                    Background="#FF2A2A2A" Padding="2" Margin="0,0,0,6">
-                                <Grid Width="96" Height="96" ToolTip.Tip="{Binding ToolTip}">
-                                    <TextBlock Text="{Binding Name}" Foreground="#FF808080" FontSize="10"
-                                               IsVisible="{Binding Thumbnail, Converter={StaticResource InverseBoolToVisibility}}"
-                                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="4" />
-                                    <Image Source="{Binding Thumbnail}" Stretch="Uniform"
-                                           RenderOptions.BitmapInterpolationMode="HighQuality" />
-                                </Grid>
-                            </Border>
-                            <Ellipse Width="5" Height="5" Fill="{StaticResource AccentBrush}"
-                                     VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                                     IsVisible="{Binding IsCurrent}" />
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <Panel>
+                <ListBox x:Name="ThumbnailStrip"
+                         Classes="DialogThumbStrip"
+                         IsVisible="{Binding HasSingleThumbnails}"
+                         ItemsSource="{Binding Thumbnails}"
+                         SelectedIndex="{Binding SelectedThumbnailIndex, Mode=TwoWay}"
+                         Focusable="False"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ThumbnailItemViewModel}">
+                            <Grid>
+                                <Border Classes="ThumbCard" BorderThickness="2" BorderBrush="Transparent" CornerRadius="4"
+                                        Background="#FF2A2A2A" Padding="2" Margin="0,0,0,6">
+                                    <Grid Width="96" Height="96" ToolTip.Tip="{Binding ToolTip}">
+                                        <TextBlock Text="{Binding Name}" Foreground="#FF808080" FontSize="10"
+                                                   IsVisible="{Binding Thumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="4" />
+                                        <Image Source="{Binding Thumbnail}" Stretch="Uniform"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Grid>
+                                </Border>
+                                <Ellipse Width="5" Height="5" Fill="{StaticResource AccentBrush}"
+                                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                         IsVisible="{Binding IsCurrent}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <ListBox x:Name="ComicThumbnailStrip"
+                         Classes="DialogThumbStrip"
+                         IsVisible="{Binding HasComicThumbnails}"
+                         ItemsSource="{Binding ComicThumbnails}"
+                         SelectedIndex="{Binding SelectedComicThumbnailIndex, Mode=TwoWay}"
+                         Focusable="False"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ComicThumbnailItemViewModel}">
+                            <Grid>
+                                <Border Classes="ThumbCard" BorderThickness="2" BorderBrush="Transparent" CornerRadius="4"
+                                        Background="#FF2A2A2A" Padding="2" Margin="0,0,0,6"
+                                        ToolTip.Tip="{Binding ToolTip}">
+                                    <Panel Height="96">
+                                        <Grid Width="136" Height="96" IsVisible="{Binding IsWideSingle}">
+                                            <TextBlock Text="{Binding WideName}" Foreground="#FF808080" FontSize="9"
+                                                       IsVisible="{Binding WideThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                            <Image Source="{Binding WideThumbnail}" Stretch="Uniform"
+                                                   HorizontalAlignment="Center"
+                                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Spacing="0" Height="96" IsVisible="{Binding IsTwoPagePair}">
+                                            <Grid Width="68" Height="96" IsVisible="{Binding HasLeft}">
+                                                <TextBlock Text="{Binding LeftName}" Foreground="#FF808080" FontSize="9"
+                                                           IsVisible="{Binding LeftThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                                <Image Source="{Binding LeftThumbnail}" Stretch="Uniform"
+                                                       HorizontalAlignment="Right"
+                                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                            </Grid>
+                                            <Grid Width="68" Height="96" IsVisible="{Binding HasRight}">
+                                                <TextBlock Text="{Binding RightName}" Foreground="#FF808080" FontSize="9"
+                                                           IsVisible="{Binding RightThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                                                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="2" />
+                                                <Image Source="{Binding RightThumbnail}" Stretch="Uniform"
+                                                       HorizontalAlignment="Left"
+                                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Panel>
+                                </Border>
+                                <Ellipse Width="5" Height="5" Fill="{StaticResource AccentBrush}"
+                                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                         IsVisible="{Binding IsCurrent}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Panel>
         </Border>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
