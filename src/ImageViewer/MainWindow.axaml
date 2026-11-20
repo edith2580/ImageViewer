@@ -9,8 +9,8 @@
         Width="1280" Height="800" MinWidth="480" MinHeight="320"
         Background="{StaticResource PanelBackground}"
         ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="0"
+        WindowDecorations="BorderOnly"
         DragDrop.AllowDrop="True">
 
     <Window.Styles>
@@ -538,18 +538,6 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
-                        <Button Classes="IconButton" ToolTip.Tip="슬라이드쇼 재생 / 일시정지 (Space)" Command="{Binding ToggleSlideShowCommand}">
-                            <Grid>
-                                <PathIcon Data="{StaticResource IconPlay}" IsVisible="{Binding !IsSlideShowPlaying}" />
-                                <PathIcon Data="{StaticResource IconPause}" IsVisible="{Binding IsSlideShowPlaying}" />
-                            </Grid>
-                        </Button>
-                        <Slider Width="110" Minimum="5" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True"
-                                SmallChange="1" LargeChange="5" VerticalAlignment="Center" Margin="4,0"
-                                Focusable="False" ToolTip.Tip="슬라이드쇼 간격 (5~90초)"
-                                Value="{Binding SlideShowInterval}" />
-                        <TextBlock Classes="StatusText" Text="{Binding SlideShowIntervalText}" Width="32" TextAlignment="Right" />
                         <Rectangle Width="1" Fill="{StaticResource PanelBorder}" Margin="6,5" />
                         <ToggleButton Classes="PinToggleButton" IsChecked="{Binding BottomBarPinned}" />
                     </StackPanel>

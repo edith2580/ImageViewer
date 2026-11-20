@@ -57,7 +57,7 @@ public partial class MainWindow : Window
         // SystemDecorations.None으로 중복 타이틀바를 제거하고 가장자리 리사이즈를 직접 처리한다.
         if (OperatingSystem.IsLinux())
         {
-            SystemDecorations = SystemDecorations.None;
+            WindowDecorations = WindowDecorations.None;
             AddHandler(PointerPressedEvent, OnLinuxResizePointerPressed, RoutingStrategies.Tunnel);
         }
 

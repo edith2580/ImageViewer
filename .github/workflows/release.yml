@@ -3,11 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: '릴리스 태그 (예: v1.0.7, 비워두면 빌드 아티팩트만 생성)'
+        description: "릴리스 태그 (예: v1.0.7, 비워두면 빌드 아티팩트만 생성)"
         required: false
         type: string
 
@@ -61,7 +61,7 @@ jobs:
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: "10.0.x"
 
       - name: Sync version
         if: needs.prepare.outputs.tag != ''
@@ -135,7 +135,7 @@ jobs:
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: "10.0.x"
 
       - name: Sync version
         if: needs.prepare.outputs.tag != ''

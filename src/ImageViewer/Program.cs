@@ -12,8 +12,17 @@ internal static class Program
         .StartWithClassicDesktopLifetime(args);
 
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
+    {
+        var builder = AppBuilder.Configure<App>()
+            .UsePlatformDetect();
+
+        if (OperatingSystem.IsLinux() &&
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        {
+            builder = builder.UseWayland();
+        }
+
+        return builder
             .With(new FontManagerOptions
             {
                 DefaultFamilyName = OperatingSystem.IsWindows() ? "Segoe UI" : EmbeddedKoreanFont,
@@ -26,4 +35,5 @@ internal static class Program
                 ]
             })
             .LogToTrace();
+    }
 }
