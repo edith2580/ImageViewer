@@ -490,7 +490,7 @@ public partial class MainWindow : Window
                 _vm.LastCommand.Execute(null);
                 break;
             case ShortcutAction.OpenImageList:
-                _vm.ShowImageListCommand.Execute(null);
+                Dispatcher.UIThread.Post(() => _vm.ShowImageListCommand.Execute(null));
                 break;
             case ShortcutAction.ModeOriginal:
                 _vm.SetDisplayModeCommand.Execute(DisplayMode.Original);

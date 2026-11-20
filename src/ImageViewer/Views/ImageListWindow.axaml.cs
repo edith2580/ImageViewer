@@ -30,13 +30,18 @@ public partial class ImageListWindow : Window
         ScrollSelectionIntoView(focusList: true);
     }
 
-    /// <summary>취소 버튼이 없으므로 Esc 로 닫는다.</summary>
+    /// <summary>Esc 로 닫고, Enter 로 선택을 확정한다 (Linux/Wayland 에서 부모 창으로 키 이벤트가 새는 것을 방지).</summary>
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
             Close(false);
             e.Handled = true;
+        }
+        else if (e.Key is Key.Enter or Key.Return)
+        {
+            e.Handled = true;
+            Accept();
         }
     }
 

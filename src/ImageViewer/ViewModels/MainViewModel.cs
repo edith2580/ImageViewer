@@ -145,7 +145,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private ObservableCollection<ComicThumbnailItemViewModel> _comicThumbnailItems = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PositionText), nameof(ThumbnailSelectedIndex), nameof(HasImages), nameof(ShowThumbnailStrip))]
+    [NotifyPropertyChangedFor(
+        nameof(PositionText),
+        nameof(ThumbnailSelectedIndex),
+        nameof(HasImages),
+        nameof(ShowThumbnailStrip),
+        nameof(ShowSingleThumbnails),
+        nameof(ShowComicThumbnails))]
     private int _currentIndex = -1;
 
     [ObservableProperty]
@@ -1872,9 +1878,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ShowOsd("수동 빈 페이지 모두 초기화");
     }
 
+    private bool _isImageListOpen;
+    private long _lastImageListClosedTick;
+
     [RelayCommand]
     private async Task ShowImageListAsync()
     {
+        if (_isImageListOpen || Environment.TickCount64 - _lastImageListClosedTick < 300)
+        {
+            return;
+        }
+
         if (_images.Count == 0)
         {
             ShowOsd("표시할 이미지가 없습니다.");
@@ -1890,7 +1904,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             comicDirection: ComicDirection,
             comicThumbnails: ComicThumbnailItems,
             comicSpreads: _comicSpreads);
-        if (_dialogs.ShowImageList(vm) && vm.ResultIndex is { } index)
+
+        bool accepted;
+        _isImageListOpen = true;
+        try
+        {
+            accepted = _dialogs.ShowImageList(vm);
+        }
+        finally
+        {
+            _isImageListOpen = false;
+            _lastImageListClosedTick = Environment.TickCount64;
+        }
+
+        if (accepted && vm.ResultIndex is { } index)
         {
             await GoToAsync(index);
         }
