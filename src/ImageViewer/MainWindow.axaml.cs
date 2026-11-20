@@ -53,6 +53,14 @@ public partial class MainWindow : Window
         MacCaptionPanel.IsVisible = isMac;
         WinCaptionPanel.IsVisible = !isMac;
 
+        // Linux(X11/Ubuntu)에서는 ExtendClientAreaToDecorationsHint만으로 OS 기본 타이틀바가 숨겨지지 않으므로
+        // SystemDecorations.None으로 중복 타이틀바를 제거하고 가장자리 리사이즈를 직접 처리한다.
+        if (OperatingSystem.IsLinux())
+        {
+            SystemDecorations = SystemDecorations.None;
+            AddHandler(PointerPressedEvent, OnLinuxResizePointerPressed, RoutingStrategies.Tunnel);
+        }
+
         _vm.LayoutChanged += OnLayoutChanged;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
 
@@ -78,9 +86,9 @@ public partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnWindowPointerMoved, RoutingStrategies.Tunnel);
         PointerExited += OnWindowPointerExited;
-        AddHandler(DragDrop.DragEnterEvent, OnDragOver);
-        AddHandler(DragDrop.DragOverEvent, OnDragOver);
-        AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(DragDrop.DragEnterEvent, OnDragOver, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+        AddHandler(DragDrop.DropEvent, OnDrop, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
 
         TopBar.AddHandler(PointerPressedEvent, OnTopBarPointerPressed, RoutingStrategies.Bubble);
         Viewport.AddHandler(PointerWheelChangedEvent, OnViewportPointerWheelChanged, RoutingStrategies.Tunnel);
@@ -842,7 +850,12 @@ public partial class MainWindow : Window
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        var hasPayload = e.DataTransfer.Contains(DataFormat.File) || e.DataTransfer.Contains(DataFormat.Text);
+        var hasPayload =
+            OperatingSystem.IsLinux() ||
+            e.DataTransfer.Contains(DataFormat.File) ||
+            e.DataTransfer.Contains(DataFormat.Text) ||
+            e.DataTransfer.Formats.Count > 0;
+
         if (!hasPayload)
         {
             e.DragEffects = DragDropEffects.None;
@@ -855,6 +868,10 @@ public partial class MainWindow : Window
         {
             e.DragEffects = DragDropEffects.Link;
         }
+        else if (e.DragEffects.HasFlag(DragDropEffects.Move))
+        {
+            e.DragEffects = DragDropEffects.Move;
+        }
         else
         {
             e.DragEffects = DragDropEffects.Copy;
@@ -865,6 +882,11 @@ public partial class MainWindow : Window
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {
+        if (e.Handled)
+        {
+            return;
+        }
+
         e.Handled = true;
         var path = ExtractDropPath(e.DataTransfer);
         if (path is not null)
@@ -894,30 +916,121 @@ public partial class MainWindow : Window
             }
         }
 
-        // Linux 일부 파일 관리자(X11/Wayland text/uri-list 등)는 텍스트 URI 목록으로 전달한다.
         var text = data.TryGetText();
-        if (!string.IsNullOrWhiteSpace(text))
+        if (ParseDropText(text) is { } fromText)
         {
-            foreach (var rawLine in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            return fromText;
+        }
+
+        // Linux(X11/Wayland) 파일 관리자가 text/uri-list, x-special/gnome-copied-files 등으로 전달하는 경우
+        foreach (var item in data.Items)
+        {
+            foreach (var format in item.Formats)
             {
-                if (rawLine.StartsWith('#'))
+                if (format is DataFormat<string> stringFormat)
                 {
-                    continue;
+                    if (ParseDropText(item.TryGetRaw(stringFormat) as string) is { } parsed)
+                    {
+                        return parsed;
+                    }
                 }
-
-                if (Uri.TryCreate(rawLine, UriKind.Absolute, out var uri) && uri.IsFile)
+                else if (format is DataFormat<byte[]> bytesFormat &&
+                         item.TryGetRaw(bytesFormat) is byte[] bytes &&
+                         bytes.Length > 0)
                 {
-                    return uri.LocalPath;
-                }
-
-                if (File.Exists(rawLine) || Directory.Exists(rawLine))
-                {
-                    return rawLine;
+                    var decoded = System.Text.Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+                    if (ParseDropText(decoded) is { } parsed)
+                    {
+                        return parsed;
+                    }
                 }
             }
         }
 
         return null;
+    }
+
+    private static string? ParseDropText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        foreach (var rawLine in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (rawLine.StartsWith('#') ||
+                rawLine.Equals("copy", StringComparison.OrdinalIgnoreCase) ||
+                rawLine.Equals("cut", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (Uri.TryCreate(rawLine, UriKind.Absolute, out var uri) && uri.IsFile)
+            {
+                return uri.LocalPath;
+            }
+
+            if (rawLine.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                var unescaped = Uri.UnescapeDataString(rawLine["file://".Length..]);
+                if (File.Exists(unescaped) || Directory.Exists(unescaped))
+                {
+                    return unescaped;
+                }
+            }
+
+            if (File.Exists(rawLine) || Directory.Exists(rawLine))
+            {
+                return rawLine;
+            }
+        }
+
+        return null;
+    }
+
+    private void OnLinuxResizePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (WindowState != WindowState.Normal || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var edge = HitTestResizeEdge(e.GetPosition(this));
+        if (edge is { } resizeEdge)
+        {
+            e.Handled = true;
+            BeginResizeDrag(resizeEdge, e);
+        }
+    }
+
+    private WindowEdge? HitTestResizeEdge(Point p)
+    {
+        const double border = 6;
+        var w = Bounds.Width;
+        var h = Bounds.Height;
+        if (w <= border * 2 || h <= border * 2)
+        {
+            return null;
+        }
+
+        var left = p.X <= border;
+        var right = p.X >= w - border;
+        var top = p.Y <= border;
+        var bottom = p.Y >= h - border;
+
+        return (left, right, top, bottom) switch
+        {
+            (true, _, true, _) => WindowEdge.NorthWest,
+            (_, true, true, _) => WindowEdge.NorthEast,
+            (true, _, _, true) => WindowEdge.SouthWest,
+            (_, true, _, true) => WindowEdge.SouthEast,
+            (true, _, _, _) => WindowEdge.West,
+            (_, true, _, _) => WindowEdge.East,
+            (_, _, true, _) => WindowEdge.North,
+            (_, _, _, true) => WindowEdge.South,
+            _ => null,
+        };
     }
 
     #endregion

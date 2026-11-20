@@ -68,12 +68,13 @@
         <KeyBinding Gesture="Ctrl+Q" Command="{Binding ExitCommand}" />
     </Window.KeyBindings>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" DragDrop.AllowDrop="True">
 
         <!-- 이미지 표시 영역: 창 전체를 채우고, 상단 바 · 하단 바는 그 위에 겹쳐 표시한다. -->
         <Panel x:Name="Viewport"
                Focusable="True"
                ClipToBounds="True"
+               DragDrop.AllowDrop="True"
                Background="{Binding Background, Converter={StaticResource BackgroundToBrush}}">
             <Panel.ContextMenu>
                 <ContextMenu>
