@@ -51,6 +51,16 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
 
+    public bool SupportsShellIntegration { get; } = OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
+
+    public string ShellSectionTitle => OperatingSystem.IsLinux()
+        ? "Linux 데스크톱 연동 (연결 프로그램)"
+        : "Windows 탐색기 연동";
+
+    public string ShellSectionDescription => OperatingSystem.IsLinux()
+        ? "이미지 · ZIP · 폴더의 '다른 프로그램으로 열기' 권장 목록과 앱 런처에 ImageViewer를 등록합니다. (~/.local/share/applications)"
+        : "폴더와 ZIP 파일의 우클릭 메뉴에 'ImageViewer에서 보기'를 추가합니다. Windows 11 에서는 '추가 옵션 표시'(Shift+F10) 메뉴에 나타납니다.";
+
     [ObservableProperty] private MouseWheelAction _mouseWheel;
     [ObservableProperty] private ViewerBackground _background;
     [ObservableProperty] private bool _wrapAround;
@@ -114,9 +124,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void RegisterShell()
     {
-        if (!_dialogs.Confirm(
-                "폴더 및 ZIP 파일의 탐색기 우클릭 메뉴에 'ImageViewer에서 보기'를 추가합니다.\n" +
-                "(현재 사용자 레지스트리 HKCU\\Software\\Classes 에 등록)\n\n계속하시겠습니까?"))
+        var prompt = OperatingSystem.IsLinux()
+            ? "현재 사용자의 데스크톱 엔트리(~/.local/share/applications/ImageViewer.desktop)를 등록합니다.\n" +
+              "파일 관리자의 '다른 프로그램으로 열기' 권장 목록과 앱 런처에 ImageViewer가 표시됩니다.\n\n계속하시겠습니까?"
+            : "폴더 및 ZIP 파일의 탐색기 우클릭 메뉴에 'ImageViewer에서 보기'를 추가합니다.\n" +
+              "(현재 사용자 레지스트리 HKCU\\Software\\Classes 에 등록)\n\n계속하시겠습니까?";
+
+        if (!_dialogs.Confirm(prompt))
         {
             return;
         }
@@ -127,7 +141,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _dialogs.ShowMessage("컨텍스트 메뉴를 등록하지 못했습니다.\n" + ex.Message, isError: true);
+            _dialogs.ShowMessage("연동 등록에 실패했습니다.\n" + ex.Message, isError: true);
         }
 
         IsShellRegistered = _shell.IsRegistered();
@@ -142,7 +156,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _dialogs.ShowMessage("컨텍스트 메뉴를 제거하지 못했습니다.\n" + ex.Message, isError: true);
+            _dialogs.ShowMessage("연동 제거에 실패했습니다.\n" + ex.Message, isError: true);
         }
 
         IsShellRegistered = _shell.IsRegistered();

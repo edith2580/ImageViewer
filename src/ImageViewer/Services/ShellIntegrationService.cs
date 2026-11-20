@@ -73,6 +73,19 @@ public sealed class ShellIntegrationService
 
     public bool IsRegistered()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                return LinuxDesktopRegistration.IsRegistered();
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _logger.LogWarning(ex, "Linux 데스크톱 엔트리 등록 상태를 확인하지 못했습니다.");
+                return false;
+            }
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             return false;
@@ -98,6 +111,13 @@ public sealed class ShellIntegrationService
 
     public void Register()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            LinuxDesktopRegistration.Register();
+            _logger.LogInformation("Linux 데스크톱 엔트리를 등록했습니다.");
+            return;
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -120,6 +140,13 @@ public sealed class ShellIntegrationService
 
     public void Unregister()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            LinuxDesktopRegistration.Unregister();
+            _logger.LogInformation("Linux 데스크톱 엔트리를 제거했습니다.");
+            return;
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             return;

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ImageMagick;
 using ImageViewer.Helpers;
@@ -55,6 +56,24 @@ public partial class App : Application
             var window = _services.GetRequiredService<MainWindow>();
             desktop.MainWindow = window;
             desktop.Exit += OnExit;
+
+            // macOS Finder에서 '다음으로 열기' 또는 더블클릭으로 전달된 파일/폴더 처리
+            if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+            {
+                activatable.Activated += (_, activatedArgs) =>
+                {
+                    var openedPath = ExtractActivatedPath(activatedArgs);
+                    if (!string.IsNullOrEmpty(openedPath))
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            window.Activate();
+                            _ = window.ViewModel.OpenPathAsync(openedPath);
+                        });
+                    }
+                };
+            }
+
             window.Show();
             _logger.LogInformation("ImageViewer 시작 (Magick.NET {Version})", MagickNET.Version);
 
@@ -72,6 +91,32 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static string? ExtractActivatedPath(ActivatedEventArgs args)
+    {
+        if (args is FileActivatedEventArgs fileArgs)
+        {
+            foreach (var item in fileArgs.Files)
+            {
+                var local = item.TryGetLocalPath();
+                if (!string.IsNullOrEmpty(local))
+                {
+                    return local;
+                }
+
+                if (item.Path is { IsFile: true } uri)
+                {
+                    return uri.LocalPath;
+                }
+            }
+        }
+        else if (args is ProtocolActivatedEventArgs { Uri.IsFile: true } protoArgs)
+        {
+            return protoArgs.Uri.LocalPath;
+        }
+
+        return null;
     }
 
     private void OnExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)

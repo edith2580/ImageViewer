@@ -122,13 +122,10 @@
             </StackPanel>
         </Border>
 
-        <Border Classes="GroupCard" IsVisible="{Binding IsWindows}">
+        <Border Classes="GroupCard" IsVisible="{Binding SupportsShellIntegration}">
             <StackPanel>
-                <TextBlock Text="Windows 탐색기 연동" Classes="GroupHeader" />
-                <TextBlock TextWrapping="Wrap" Foreground="#FF555555">
-                    폴더와 ZIP 파일의 우클릭 메뉴에 'ImageViewer에서 보기'를 추가합니다.
-                    Windows 11 에서는 '추가 옵션 표시'(Shift+F10) 메뉴에 나타납니다.
-                </TextBlock>
+                <TextBlock Text="{Binding ShellSectionTitle}" Classes="GroupHeader" />
+                <TextBlock Text="{Binding ShellSectionDescription}" TextWrapping="Wrap" Foreground="#FF555555" />
                 <DockPanel Margin="0,8,0,0">
                     <Button DockPanel.Dock="Right" Content="제거" Width="70" Command="{Binding UnregisterShellCommand}" />
                     <Button DockPanel.Dock="Right" Content="등록" Width="70" Margin="0,0,6,0" Command="{Binding RegisterShellCommand}" />

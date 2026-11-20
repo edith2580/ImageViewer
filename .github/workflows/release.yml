@@ -206,6 +206,78 @@ jobs:
             <string>12.0</string>
             <key>NSHighResolutionCapable</key>
             <true/>
+            <key>CFBundleDocumentTypes</key>
+            <array>
+              <dict>
+                <key>CFBundleTypeName</key>
+                <string>Image</string>
+                <key>CFBundleTypeRole</key>
+                <string>Viewer</string>
+                <key>LSHandlerRank</key>
+                <string>Alternate</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                  <string>public.image</string>
+                  <string>public.jpeg</string>
+                  <string>public.png</string>
+                  <string>com.compuserve.gif</string>
+                  <string>org.webmproject.webp</string>
+                  <string>public.tiff</string>
+                  <string>com.microsoft.bmp</string>
+                  <string>public.heic</string>
+                  <string>public.heif</string>
+                  <string>public.avif</string>
+                  <string>com.microsoft.ico</string>
+                  <string>com.adobe.photoshop-image</string>
+                  <string>public.camera-raw-image</string>
+                </array>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                  <string>jpg</string><string>jpeg</string><string>jpe</string><string>jfif</string>
+                  <string>png</string><string>apng</string>
+                  <string>bmp</string><string>dib</string>
+                  <string>gif</string>
+                  <string>tif</string><string>tiff</string>
+                  <string>webp</string>
+                  <string>heic</string><string>heif</string><string>avif</string>
+                  <string>ico</string><string>cur</string>
+                  <string>jxl</string><string>jp2</string><string>j2k</string>
+                  <string>tga</string><string>psd</string><string>dds</string><string>pcx</string><string>qoi</string>
+                  <string>ppm</string><string>pgm</string><string>pbm</string><string>pnm</string>
+                  <string>hdr</string><string>exr</string>
+                  <string>dng</string><string>cr2</string><string>cr3</string><string>nef</string>
+                  <string>arw</string><string>orf</string><string>rw2</string><string>raf</string>
+                </array>
+              </dict>
+              <dict>
+                <key>CFBundleTypeName</key>
+                <string>ZIP Archive</string>
+                <key>CFBundleTypeRole</key>
+                <string>Viewer</string>
+                <key>LSHandlerRank</key>
+                <string>Alternate</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                  <string>public.zip-archive</string>
+                </array>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                  <string>zip</string><string>cbz</string>
+                </array>
+              </dict>
+              <dict>
+                <key>CFBundleTypeName</key>
+                <string>Folder</string>
+                <key>CFBundleTypeRole</key>
+                <string>Viewer</string>
+                <key>LSHandlerRank</key>
+                <string>Alternate</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                  <string>public.folder</string>
+                </array>
+              </dict>
+            </array>
           </dict>
           </plist>
           EOF
@@ -286,6 +358,55 @@ jobs:
           else
             tar -czf "artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.tar.gz" \
               -C "$PUB_DIR" .
+
+            if [[ "${{ matrix.rid }}" == linux-x64 ]]; then
+              APPIMAGE_ARCH="x86_64"
+            else
+              APPIMAGE_ARCH="aarch64"
+            fi
+
+            APPDIR="artifacts/appdir/${{ matrix.rid }}/ImageViewer.AppDir"
+            rm -rf "$APPDIR"
+            mkdir -p "$APPDIR/usr/bin" \
+                     "$APPDIR/usr/share/applications" \
+                     "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+            cp -R "$PUB_DIR/"* "$APPDIR/usr/bin/"
+            chmod +x "$APPDIR/usr/bin/ImageViewer"
+
+            cp src/ImageViewer/Resources/ImageViewer.png "$APPDIR/ImageViewer.png"
+            cp src/ImageViewer/Resources/ImageViewer.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/ImageViewer.png"
+            ln -sf ImageViewer.png "$APPDIR/.DirIcon"
+
+            cat > "$APPDIR/ImageViewer.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=ImageViewer
+          Comment=Cross-platform image viewer for folders and ZIP archives
+          Exec=ImageViewer %F
+          Icon=ImageViewer
+          Terminal=false
+          Categories=Graphics;Viewer;
+          MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/tiff;image/heic;image/heif;image/avif;image/x-icon;image/jxl;image/jp2;image/x-tga;image/vnd.adobe.photoshop;image/x-portable-pixmap;image/x-portable-graymap;image/x-portable-bitmap;image/x-portable-anymap;image/x-dcraw;application/zip;application/vnd.comicbook+zip;inode/directory;
+          EOF
+            cp "$APPDIR/ImageViewer.desktop" "$APPDIR/usr/share/applications/ImageViewer.desktop"
+
+            cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export LD_LIBRARY_PATH="$HERE/usr/bin:${LD_LIBRARY_PATH:-}"
+          exec "$HERE/usr/bin/ImageViewer" "$@"
+          EOF
+            chmod +x "$APPDIR/AppRun"
+
+            APPIMAGETOOL="$RUNNER_TEMP/appimagetool-x86_64.AppImage"
+            curl -fSL -o "$APPIMAGETOOL" \
+              "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+            chmod +x "$APPIMAGETOOL"
+
+            APPIMAGE_OUT="artifacts/dist/ImageViewer-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.AppImage"
+            APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$APPIMAGE_ARCH" "$APPIMAGETOOL" --no-appstream "$APPDIR" "$APPIMAGE_OUT"
+            chmod +x "$APPIMAGE_OUT"
           fi
 
       - name: Upload ${{ matrix.rid }} artifact
