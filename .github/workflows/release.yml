@@ -423,6 +423,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -436,7 +439,74 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Create GitHub Release
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $changelogPath = "CHANGELOG.md"
+          $notesPath = "release-notes.md"
+          $found = $false
+
+          if (Test-Path $changelogPath) {
+            $lines = Get-Content -Path $changelogPath -Encoding UTF8
+            $escaped = [regex]::Escape($version)
+            $headerPattern = "^##\s+(?:v|V)?$escaped(?:\b|\s|$)"
+            $sectionLines = [System.Collections.Generic.List[string]]::new()
+            $inSection = $false
+
+            foreach ($line in $lines) {
+              if (-not $inSection) {
+                if ($line -match $headerPattern) {
+                  $inSection = $true
+                  $found = $true
+                }
+              } else {
+                if ($line -match '^##\s+') {
+                  break
+                }
+                $sectionLines.Add($line)
+              }
+            }
+
+            if ($found) {
+              while ($sectionLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($sectionLines[0])) {
+                $sectionLines.RemoveAt(0)
+              }
+              while ($sectionLines.Count -gt 0 -and ([string]::IsNullOrWhiteSpace($sectionLines[$sectionLines.Count - 1]) -or $sectionLines[$sectionLines.Count - 1].Trim() -eq '---')) {
+                $sectionLines.RemoveAt($sectionLines.Count - 1)
+              }
+
+              if ($sectionLines.Count -gt 0) {
+                [IO.File]::WriteAllLines($notesPath, $sectionLines, (New-Object Text.UTF8Encoding $false))
+                Write-Host "Extracted release notes for v$version from CHANGELOG.md:"
+                Get-Content -Path $notesPath -Encoding UTF8 | Write-Host
+              } else {
+                $found = $false
+              }
+            }
+          }
+
+          if (-not $found) {
+            Write-Host "No section found for v$version in CHANGELOG.md. Falling back to auto-generated release notes."
+          }
+
+          "has_notes=$($found.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Create GitHub Release (with CHANGELOG notes)
+        if: steps.changelog.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ImageViewer v${{ needs.prepare.outputs.version }}
+          body_path: release-notes.md
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+          files: dist/*
+
+      - name: Create GitHub Release (auto-generated fallback)
+        if: steps.changelog.outputs.has_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
