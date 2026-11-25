@@ -248,7 +248,92 @@ public class ExifTests
         var panel = ImageViewer.ViewModels.MainViewModel.BuildInfoItems(info, decoded, ImageTransform.Identity);
         Assert.Contains(panel, i => i.IsHeader && i.Label == "EXIF");
         Assert.Contains(panel, i => i.Label == "해상도" && i.Value == "32 × 24");
+        Assert.DoesNotContain(panel, i => i.IsHeader && i.Label == "메타 정보");
         decoded.Release();
+    }
+
+    [Fact]
+    public async Task Reads_png_text_chunks_and_exif_descriptions()
+    {
+        using var temp = new TempFolder();
+        using (var image = new MagickImage(MagickColors.Gray, 32, 24))
+        {
+            image.SetAttribute("parameters", "a cat\nNegative prompt: dog\nSteps: 20, Sampler: Euler a");
+            image.SetAttribute("Title", "고양이");
+            image.Comment = "hello comment";
+            image.Write(temp.File("ai.png"), MagickFormat.Png);
+        }
+
+        using (var image = new MagickImage(MagickColors.Gray, 32, 24))
+        {
+            var exif = new ExifProfile();
+            exif.SetValue(ExifTag.ImageDescription, "Sunset at the beach");
+            exif.SetValue(ExifTag.XPTitle, System.Text.Encoding.Unicode.GetBytes("바다 노을\0"));
+            exif.SetValue(ExifTag.Software, "TestEditor 1.0");
+            image.SetProfile(exif);
+            image.Comment = "jpeg comment";
+            image.Write(temp.File("photo.jpg"), MagickFormat.Jpeg);
+        }
+
+        var settings = new SettingsService(settingsPath: temp.File("s.json"));
+        settings.Load();
+        using var folder = new FolderImageSource(temp.Path);
+        var infos = await folder.GetImagesAsync(CancellationToken.None);
+        using var loader = new ImageLoaderService(settings);
+
+        var png = await loader.LoadAsync(folder, infos.Single(i => i.Name == "ai.png"), CancellationToken.None);
+        var pngValues = png.Metadata.ToDictionary(i => i.Label, i => i.Value);
+        Assert.Equal("a cat\nNegative prompt: dog\nSteps: 20, Sampler: Euler a", pngValues["생성 정보"]);
+        Assert.Equal("고양이", pngValues["제목"]);
+        Assert.Equal("hello comment", pngValues["주석"]);
+        Assert.DoesNotContain(png.Metadata, i => i.Label.Contains(':'));
+
+        var panel = ImageViewer.ViewModels.MainViewModel.BuildInfoItems(png.Info, png, ImageTransform.Identity);
+        Assert.Contains(panel, i => i.IsHeader && i.Label == "메타 정보");
+        png.Release();
+
+        var jpeg = await loader.LoadAsync(folder, infos.Single(i => i.Name == "photo.jpg"), CancellationToken.None);
+        var jpegValues = jpeg.Metadata.ToDictionary(i => i.Label, i => i.Value);
+        Assert.Equal("Sunset at the beach", jpegValues["설명"]);
+        Assert.Equal("바다 노을", jpegValues["제목"]);
+        Assert.Equal("jpeg comment", jpegValues["주석"]);
+
+        // EXIF 구역에 이미 나온 값(소프트웨어)은 메타 정보에 다시 보이지 않는다.
+        Assert.Equal("TestEditor 1.0", jpeg.Exif.Single(i => i.Label == "소프트웨어").Value);
+        Assert.DoesNotContain(jpeg.Metadata, i => i.Value == "TestEditor 1.0");
+        jpeg.Release();
+    }
+
+    [Fact]
+    public void Reads_xmp_fields()
+    {
+        var document = System.Xml.Linq.XDocument.Parse("""
+            <x:xmpmeta xmlns:x="adobe:ns:meta/">
+              <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+                                 xmp:Rating="4" xmp:CreatorTool="Lightroom">
+                  <dc:title><rdf:Alt><rdf:li xml:lang="ko">제목</rdf:li><rdf:li xml:lang="x-default">Title</rdf:li></rdf:Alt></dc:title>
+                  <dc:creator><rdf:Seq><rdf:li>Kim</rdf:li></rdf:Seq></dc:creator>
+                  <dc:subject><rdf:Bag><rdf:li>sea</rdf:li><rdf:li>sunset</rdf:li></rdf:Bag></dc:subject>
+                </rdf:Description>
+              </rdf:RDF>
+            </x:xmpmeta>
+            """);
+
+        var values = new Dictionary<string, string?>();
+        MetadataReader.ReadXmp(document, (label, value) =>
+        {
+            if (value is not null)
+            {
+                values[label] = value;
+            }
+        });
+
+        Assert.Equal("Title", values["제목"]);
+        Assert.Equal("Kim", values["작성자"]);
+        Assert.Equal("sea, sunset", values["키워드"]);
+        Assert.Equal("Lightroom", values["편집 프로그램"]);
+        Assert.Equal("★★★★☆", values["별점"]);
     }
 }
 

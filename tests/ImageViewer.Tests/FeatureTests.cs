@@ -125,6 +125,49 @@ public class ExifFormattingTests
     public void Formats_exif_dates() =>
         Assert.Equal("2026-11-15 10:20:30", ExifReader.FormatExifDate("2026:11:15 10:20:30"));
 
+    [Fact]
+    public void Metadata_helpers_decode_and_truncate()
+    {
+        var ascii = System.Text.Encoding.ASCII.GetBytes("ASCII\0\0\0hello\0");
+        Assert.Equal("hello", MetadataReader.DecodeUserComment(ascii));
+
+        var unicode = System.Text.Encoding.ASCII.GetBytes("UNICODE\0").Concat(System.Text.Encoding.BigEndianUnicode.GetBytes("Hi there")).ToArray();
+        Assert.Equal("Hi there", MetadataReader.DecodeUserComment(unicode));
+
+        var blank = System.Text.Encoding.ASCII.GetBytes("\0\0\0\0\0\0\0\0        ");
+        Assert.Null(MetadataReader.DecodeUserComment(blank));
+
+        Assert.Equal("2026-11-15", MetadataReader.FormatIptcDate("20261115"));
+
+        var longText = new string('a', MetadataReader.MaxValueLength + 50);
+        Assert.Equal(new string('a', MetadataReader.MaxValueLength) + " …", MetadataReader.Truncate(longText));
+
+        var manyLines = string.Join('\n', Enumerable.Range(1, 20));
+        var truncated = MetadataReader.Truncate(manyLines);
+        Assert.Equal(MetadataReader.MaxValueLines, truncated.Split('\n').Length);
+        Assert.EndsWith(" …", truncated);
+        Assert.Equal("short", MetadataReader.Truncate("short"));
+    }
+
+    [Fact]
+    public void Metadata_copy_text_uses_full_values()
+    {
+        var full = new string('p', MetadataReader.MaxValueLength + 100);
+        var header = ImageViewer.Models.MetadataItem.Header("메타 정보") with { IsCopyable = true };
+        var prompt = new ImageViewer.Models.MetadataItem("생성 정보", MetadataReader.Truncate(full)) { IsCopyable = true, FullValue = full };
+        var title = new ImageViewer.Models.MetadataItem("제목", "line1\nline2") { IsCopyable = true };
+        var size = new ImageViewer.Models.MetadataItem("해상도", "32 × 24");
+        var items = new[] { ImageViewer.Models.MetadataItem.Header("이미지"), size, header, prompt, title };
+
+        Assert.Equal(full, ImageViewer.ViewModels.MainViewModel.BuildMetadataCopyText(items, prompt));
+        Assert.Equal($"line1{Environment.NewLine}line2", ImageViewer.ViewModels.MainViewModel.BuildMetadataCopyText(items, title));
+        Assert.Null(ImageViewer.ViewModels.MainViewModel.BuildMetadataCopyText(items, size));
+
+        var nl = Environment.NewLine;
+        Assert.Equal($"생성 정보: {full}{nl}{nl}제목: line1{nl}line2",
+            ImageViewer.ViewModels.MainViewModel.BuildMetadataCopyText(items, header));
+    }
+
     [Theory]
     [InlineData(1u, 250u, "1/250 초")]
     [InlineData(2u, 1u, "2 초")]

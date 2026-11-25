@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -96,6 +97,7 @@ public partial class MainWindow : Window
         Viewport.AddHandler(PointerMovedEvent, OnViewportPointerMoved, RoutingStrategies.Bubble);
         Viewport.AddHandler(PointerReleasedEvent, OnViewportPointerReleased, RoutingStrategies.Bubble);
         Viewport.PointerCaptureLost += OnViewportPointerCaptureLost;
+        InfoPanel.AddHandler(PointerPressedEvent, OnInfoPanelPointerPressed, RoutingStrategies.Bubble);
 
         ThumbnailList.AddHandler(PointerWheelChangedEvent, OnThumbnailPointerWheelChanged, RoutingStrategies.Tunnel);
         ThumbnailList.AddHandler(PointerPressedEvent, OnThumbnailPointerPressed, RoutingStrategies.Tunnel);
@@ -710,6 +712,23 @@ public partial class MainWindow : Window
         }
 
         BeginMoveDrag(e);
+    }
+
+    /// <summary>
+    /// 정보 패널의 메타 정보 항목을 왼쪽 클릭하면 클립보드에 복사한다.
+    /// 다른 항목 · 빈 곳은 처리하지 않아 Viewport 로 전달된다 (창 이동 · 더블클릭 최대화).
+    /// </summary>
+    private void OnInfoPanelPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(InfoPanel).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed ||
+            (e.Source as StyledElement)?.DataContext is not MetadataItem { IsCopyable: true } item ||
+            Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _ = _vm.CopyMetadataAsync(item, text => clipboard.SetTextAsync(text));
     }
 
     private void StartPan(PointerPressedEventArgs e)

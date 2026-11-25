@@ -344,7 +344,50 @@ public sealed partial class MainViewModel
             items.AddRange(decoded.Exif);
         }
 
+        if (decoded.Metadata.Count > 0)
+        {
+            items.Add(MetadataItem.Header("메타 정보") with { IsCopyable = true });
+            items.AddRange(decoded.Metadata);
+        }
+
         return items;
+    }
+
+    /// <summary>
+    /// 정보 패널의 메타 정보 항목을 클릭했을 때 클립보드에 넣을 글. 항목이면 잘리지 않은 값,
+    /// "메타 정보" 제목이면 구역 전체("이름: 값", 빈 줄로 구분). 복사할 수 없는 항목이면 null.
+    /// </summary>
+    internal static string? BuildMetadataCopyText(IReadOnlyList<MetadataItem> items, MetadataItem clicked)
+    {
+        if (!clicked.IsCopyable)
+        {
+            return null;
+        }
+
+        var text = clicked.IsHeader
+            ? string.Join("\n\n", items.Where(i => i.IsCopyable && !i.IsHeader).Select(i => $"{i.Label}: {i.CopyValue}"))
+            : clicked.CopyValue;
+        return text.Length == 0 ? null : text.Replace("\n", Environment.NewLine, StringComparison.Ordinal);
+    }
+
+    /// <summary>메타 정보 항목을 클립보드에 복사한다. 클립보드 쓰기는 창(View)이 맡는다.</summary>
+    public async Task CopyMetadataAsync(MetadataItem clicked, Func<string, Task> setClipboardText)
+    {
+        if (BuildMetadataCopyText(InfoItems, clicked) is not { } text)
+        {
+            return;
+        }
+
+        try
+        {
+            await setClipboardText(text);
+            ShowOsd(clicked.IsHeader ? "메타 정보 전체를 클립보드에 복사했습니다." : $"'{clicked.Label}' 을(를) 클립보드에 복사했습니다.");
+        }
+        catch (Exception)
+        {
+            // 다른 프로그램이 클립보드를 잡고 있으면 실패할 수 있다
+            ShowOsd("클립보드에 복사하지 못했습니다.");
+        }
     }
 
     #endregion

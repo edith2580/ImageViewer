@@ -71,6 +71,9 @@ public sealed class DecodeResult(MagickImage image, string format)
 
     public IReadOnlyList<MetadataItem> Exif { get; init; } = [];
 
+    /// <summary>EXIF 외의 메타 정보 (PNG 텍스트 청크, 주석, IPTC, XMP 등).</summary>
+    public IReadOnlyList<MetadataItem> Metadata { get; init; } = [];
+
     public void Deconstruct(out MagickImage image, out string format)
     {
         image = Image;
@@ -104,6 +107,7 @@ public sealed class DecodedImage
         FrameCount = Animation?.FrameCount ?? 1;
         FrameDelaysMs = Animation?.DelaysMs ?? [];
         Exif = result.Exif;
+        Metadata = result.Metadata;
     }
 
     public ImageInfo Info { get; }
@@ -139,6 +143,9 @@ public sealed class DecodedImage
     public IReadOnlyList<int> FrameDelaysMs { get; }
 
     public IReadOnlyList<MetadataItem> Exif { get; }
+
+    /// <summary>EXIF 외의 메타 정보 (PNG 텍스트 청크, 주석, IPTC, XMP 등).</summary>
+    public IReadOnlyList<MetadataItem> Metadata { get; }
 
     /// <summary>
     /// 렌더링 캐시 키 (이미지 + 페이지 + 디코딩 해상도).
@@ -536,6 +543,7 @@ public sealed class ImageLoaderService : IDisposable
             }
 
             var exif = thumbnailHint is null ? ExifReader.Read(image) : [];
+            var metadata = thumbnailHint is null ? MetadataReader.Read(image, exif) : [];
             image.AutoOrient();
             NormalizeColor(image);
             return new DecodeResult(image, formatName)
@@ -545,6 +553,7 @@ public sealed class ImageLoaderService : IDisposable
                 PageIndex = page,
                 PageCount = paged ? frameCount : 1,
                 Exif = exif,
+                Metadata = metadata,
             };
         }
         catch (MagickException ex)

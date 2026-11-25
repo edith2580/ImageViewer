@@ -59,6 +59,16 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,8,0,3" />
         </Style>
+        <!-- 메타 정보 항목: 클릭하면 클립보드에 복사 -->
+        <Style Selector="Grid.InfoRow.copyable">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTip.Tip" Value="클릭하면 클립보드에 복사" />
+            <Setter Property="ToolTip.ShowDelay" Value="600" />
+        </Style>
+        <Style Selector="Grid.InfoRow.copyable:pointerover">
+            <Setter Property="Background" Value="#26FFFFFF" />
+        </Style>
     </Window.Styles>
 
     <Window.KeyBindings>
@@ -191,18 +201,19 @@
                 </StackPanel>
             </Border>
 
-            <!-- 이미지 정보(EXIF) 패널: Tab 으로 여닫는다. -->
+            <!-- 이미지 정보(EXIF) 패널: Tab 으로 여닫는다.
+                 메타 정보 항목을 클릭하면 잘리지 않은 값을 클립보드에 복사한다 (제목은 구역 전체).
+                 그 밖의 곳을 누르면 이미지 영역(Viewport)으로 전달돼 창 이동 등이 그대로 동작한다. -->
             <Border x:Name="InfoPanel"
                     IsVisible="{Binding IsInfoPanelVisible}"
                     HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,12,0,0"
                     MaxWidth="380" Padding="14,4,14,10" CornerRadius="10"
                     Background="#D91B1B1E" BorderBrush="#30FFFFFF" BorderThickness="1"
-                    BoxShadow="0 2 14 0 #66000000"
-                    IsHitTestVisible="False">
+                    BoxShadow="0 2 14 0 #66000000">
                 <ItemsControl ItemsSource="{Binding InfoItems}" Grid.IsSharedSizeScope="True">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:MetadataItem}">
-                            <Grid>
+                            <Grid Classes="InfoRow" Classes.copyable="{Binding IsCopyable}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="InfoLabel" />
                                     <ColumnDefinition Width="*" />
