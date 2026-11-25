@@ -476,7 +476,7 @@ public sealed class ImageLoaderService : IDisposable
             stream.Position = 0;
             format = info.Format;
 
-            if (ImageFormatHelper.BlockedFormats.Contains(format))
+            if (!ImageFormatHelper.IsAllowedFormat(format))
             {
                 throw new ImageLoadException($"지원하지 않는 형식입니다. ({format})");
             }
@@ -676,7 +676,7 @@ public sealed class ImageLoaderService : IDisposable
         }
 
         return Enum.TryParse<MagickFormat>(ext, ignoreCase: true, out var format) &&
-               !ImageFormatHelper.BlockedFormats.Contains(format)
+               ImageFormatHelper.IsAllowedFormat(format)
             ? format
             : null;
     }

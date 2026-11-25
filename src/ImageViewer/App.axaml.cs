@@ -159,8 +159,11 @@ public partial class App : Application
         return services.BuildServiceProvider();
     }
 
-    private static void ConfigureMagick()
+    private void ConfigureMagick()
     {
+        // 다른 ImageMagick 호출보다 먼저: 스크립트 · 문서 코더와 외부 프로그램 실행을 막는 보안 정책
+        MagickSecurity.Initialize(Path.Combine(AppPaths.DataDirectory, "magick"), _logger);
+
         // 지나치게 큰 이미지로 인한 메모리 과다 사용 방지 (픽셀 수 검사는 디코딩 전에 별도로 수행)
         ResourceLimits.Width = 100_000;
         ResourceLimits.Height = 100_000;
@@ -184,19 +187,78 @@ public partial class App : Application
         };
     }
 
+    /// <summary>오류 알림 창이 떠 있는 동안 같은 오류가 되풀이되어도 창을 더 띄우지 않는다.</summary>
+    private bool _errorBoxOpen;
+
+    /// <summary>
+    /// 프로세스 상태를 믿을 수 없게 만드는 예외. 이런 예외는 삼키지 않고 기록한 뒤 프로그램을 끝낸다.
+    /// (메모리 부족은 큰 이미지 하나의 할당 실패인 경우가 대부분이라 캐시를 비우고 계속한다)
+    /// </summary>
+    internal static bool IsFatal(Exception ex) => ex is InvalidProgramException
+        or AccessViolationException
+        or System.Runtime.InteropServices.SEHException
+        or BadImageFormatException
+        or TypeInitializationException
+        or StackOverflowException;
+
     private void OnDispatcherUnhandledException(object? sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        var ex = e.Exception;
+        if (IsFatal(ex))
+        {
+            _logger?.LogCritical(ex, "복구할 수 없는 UI 스레드 예외로 종료합니다.");
+            try
+            {
+                _services?.GetService<SettingsService>()?.Save();
+            }
+            catch (Exception)
+            {
+            }
+
+            return; // 처리하지 않음 → 프로그램 종료
+        }
+
         // 개별 이미지 오류 등으로 프로그램 전체가 종료되지 않도록 한다.
-        _logger?.LogError(e.Exception, "UI 스레드 예외");
         e.Handled = true;
+        string message;
+        if (ex is OutOfMemoryException or InsufficientExecutionStackException)
+        {
+            _logger?.LogError(ex, "메모리 부족: 캐시를 비웁니다.");
+            FreeMemory();
+            message = "메모리가 부족해 작업을 마치지 못했습니다.\n이미지 캐시를 비웠습니다. 너무 큰 이미지가 문제라면 설정 > 안전 한도의 최대 이미지 크기를 낮춰 주세요.";
+        }
+        else
+        {
+            _logger?.LogError(ex, "UI 스레드 예외");
+            message = "작업 중 오류가 발생했습니다.\n" + ex.Message;
+        }
+
+        if (_errorBoxOpen)
+        {
+            return;
+        }
+
         try
         {
+            _errorBoxOpen = true;
             var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-            _ = MessageBoxWindow.ShowAsync(
-                owner,
-                "작업 중 오류가 발생했습니다.\n" + e.Exception.Message,
-                "ImageViewer",
-                isYesNo: false);
+            MessageBoxWindow.ShowAsync(owner, message, "ImageViewer", isYesNo: false)
+                .ContinueWith(_ => Dispatcher.UIThread.Post(() => _errorBoxOpen = false), TaskScheduler.Default);
+        }
+        catch (Exception)
+        {
+            _errorBoxOpen = false;
+        }
+    }
+
+    private void FreeMemory()
+    {
+        try
+        {
+            _services?.GetService<ImageLoaderService>()?.ClearCache();
+            _services?.GetService<ImageRenderService>()?.ClearCache();
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect();
         }
         catch (Exception)
         {

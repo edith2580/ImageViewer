@@ -18,6 +18,10 @@ public sealed class DialogService : IDialogService
 
     private static Window? Owner => Desktop?.MainWindow is { IsLoaded: true } w ? w : null;
 
+    private int _modalDepth;
+
+    public bool IsModalOpen => _modalDepth > 0;
+
     public string? PickFolder()
     {
         if (Owner?.StorageProvider is not { } storage)
@@ -103,7 +107,20 @@ public sealed class DialogService : IDialogService
         return RunModal(() => MessageBoxWindow.ShowAsync(owner, message, Caption, isYesNo: true));
     }
 
-    private static T RunModal<T>(Func<Task<T>> action)
+    private T RunModal<T>(Func<Task<T>> action)
+    {
+        _modalDepth++;
+        try
+        {
+            return RunModalCore(action);
+        }
+        finally
+        {
+            _modalDepth--;
+        }
+    }
+
+    private static T RunModalCore<T>(Func<Task<T>> action)
     {
         var frame = new DispatcherFrame();
         T result = default!;

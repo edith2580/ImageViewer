@@ -30,17 +30,46 @@ public static class ImageFormatHelper
         };
 
     /// <summary>
-    /// 확장자가 이미지와 같더라도 실제 내용이 이 포맷으로 판별되면 디코딩을 거부한다.
-    /// (스크립트·외부 참조를 처리할 수 있는 포맷)
+    /// 디코딩을 허용하는 형식 (허용 목록). 파일 내용으로 판별한 형식이 여기에 없으면 확장자와 관계없이 거부한다.
+    /// <see cref="SupportedExtensions"/> 의 이미지 형식과, ImageMagick 이 같은 형식을 부르는 다른 이름(변형)만 넣는다.
+    /// (이름이 바뀐 MagickFormat 값이 있어도 빌드가 깨지지 않도록 이름으로 찾는다)
     /// </summary>
-    public static IReadOnlySet<MagickFormat> BlockedFormats { get; } = new HashSet<MagickFormat>
+    public static IReadOnlySet<MagickFormat> AllowedFormats { get; } = BuildAllowedFormats(
+        // JPEG
+        "Jpeg", "Jpg", "Jpe", "Pjpeg", "Jfif",
+        // PNG · APNG
+        "Png", "Png8", "Png24", "Png32", "Png48", "Png64", "Png00", "APng",
+        // BMP
+        "Bmp", "Bmp2", "Bmp3", "Dib",
+        // GIF
+        "Gif", "Gif87",
+        // TIFF
+        "Tif", "Tiff", "Tiff64", "Ptif",
+        // WebP · HEIF · AVIF · JPEG XL · JPEG 2000
+        "WebP", "Heic", "Heif", "Avif", "Jxl", "Jp2", "J2k", "J2c", "Jpc", "Jpt",
+        // 아이콘 · 기타 래스터
+        "Ico", "Icon", "Cur", "Tga", "Icb", "Vda", "Vst", "Psd", "Psb", "Dds", "Dxt1", "Dxt5",
+        "Pcx", "Dcx", "Qoi", "Ppm", "Pgm", "Pbm", "Pnm", "Pam", "Hdr", "Exr",
+        // 카메라 RAW (libraw)
+        "Dng", "Cr2", "Cr3", "Crw", "Nef", "Nrw", "Arw", "Sr2", "Srf", "Srw", "Orf", "Rw2", "Raf",
+        "Pef", "Dcr", "Kdc", "K25", "Mef", "Mrw", "Erf", "ThreeFr", "Rmf", "Raw");
+
+    private static HashSet<MagickFormat> BuildAllowedFormats(params string[] names)
     {
-        MagickFormat.Svg, MagickFormat.Msl, MagickFormat.Mvg,
-        MagickFormat.Pdf, MagickFormat.Ps, MagickFormat.Eps, MagickFormat.Ept, MagickFormat.Epi,
-        MagickFormat.Ai, MagickFormat.Xps, MagickFormat.Text, MagickFormat.Txt,
-        MagickFormat.Html, MagickFormat.Http, MagickFormat.Https,
-        MagickFormat.Label, MagickFormat.Caption, MagickFormat.Pango,
-    };
+        var set = new HashSet<MagickFormat>();
+        foreach (var name in names)
+        {
+            if (Enum.TryParse<MagickFormat>(name, ignoreCase: true, out var format))
+            {
+                set.Add(format);
+            }
+        }
+
+        return set;
+    }
+
+    /// <summary>파일 내용으로 판별한 형식을 디코딩해도 되는지.</summary>
+    public static bool IsAllowedFormat(MagickFormat format) => AllowedFormats.Contains(format);
 
     public static bool IsSupportedExtension(string? fileName)
     {

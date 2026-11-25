@@ -795,6 +795,11 @@ public sealed partial class MainViewModel
                 };
                 _watchDebounce.Tick += (_, _) =>
                 {
+                    if (_dialogs.IsModalOpen)
+                    {
+                        return; // 대화 상자가 닫힐 때까지 목록을 바꾸지 않는다 (타이머가 계속 다시 확인)
+                    }
+
                     _watchDebounce.Stop();
                     _ = RefreshSourceAsync();
                 };

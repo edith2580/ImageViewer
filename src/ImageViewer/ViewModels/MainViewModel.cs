@@ -1749,6 +1749,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSlideShowTick(object? sender, EventArgs e)
     {
+        if (_dialogs.IsModalOpen)
+        {
+            // 대화 상자(설정 · 이미지 목록 · 삭제 확인 등)를 보는 동안에는 넘기지 않는다.
+            _slideShow.RestartTimer();
+            return;
+        }
+
         var next = _slideShow.GetNextIndex(CurrentIndex, _images.Count);
         if (next is null)
         {
@@ -1895,8 +1902,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var snapshot = _images;
         var vm = new ImageListViewModel(
-            _images,
+            snapshot,
             CurrentIndex,
             SourceInfo,
             ThumbnailItems,
@@ -1917,10 +1925,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _lastImageListClosedTick = Environment.TickCount64;
         }
 
-        if (accepted && vm.ResultIndex is { } index)
+        if (accepted && vm.ResultIndex is { } index && index >= 0 && index < snapshot.Count)
         {
-            await GoToAsync(index);
+            // 대화 상자를 보는 동안 폴더 변경으로 목록이 바뀌었을 수 있으므로 번호가 아니라 이미지로 찾는다.
+            var key = snapshot[index].Key;
+            var current = FindIndexByKey(key);
+            if (current >= 0)
+            {
+                await GoToAsync(current);
+            }
+            else
+            {
+                ShowOsd("선택한 이미지가 목록에서 사라졌습니다.");
+            }
         }
+    }
+
+    private int FindIndexByKey(string key)
+    {
+        for (var i = 0; i < _images.Count; i++)
+        {
+            if (_images[i].Key == key)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     [RelayCommand]

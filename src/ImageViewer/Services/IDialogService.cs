@@ -17,4 +17,10 @@ public interface IDialogService
     void ShowMessage(string message, bool isError = false);
 
     bool Confirm(string message);
+
+    /// <summary>
+    /// 모달 대화 상자가 열려 있는지. 대화 상자가 떠 있는 동안에도 메인 창의 타이머 · 비동기 작업은 계속 돌기 때문에,
+    /// 화면을 바꾸는 작업(슬라이드쇼 · 폴더 변경 반영)은 이 값을 보고 대화 상자가 닫힐 때까지 미룬다.
+    /// </summary>
+    bool IsModalOpen { get; }
 }
