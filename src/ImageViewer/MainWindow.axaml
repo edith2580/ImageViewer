@@ -112,6 +112,8 @@
                     <MenuItem Header="이미지 정보" InputGesture="Tab" ToggleType="CheckBox"
                               Command="{Binding ToggleInfoPanelCommand}"
                               IsChecked="{Binding IsInfoPanelVisible, Mode=OneWay}" />
+                    <MenuItem Header="파일 삭제 (휴지통으로)" InputGesture="Delete"
+                              Command="{Binding DeleteCurrentFileCommand}" />
                     <Separator />
                     <MenuItem Header="코믹 뷰어 (2페이지 보기)" InputGesture="C" ToggleType="CheckBox"
                               Command="{Binding ToggleComicModeCommand}"

@@ -19,7 +19,8 @@ public partial class ShortcutsWindow : Window
             new("Ctrl + O", "파일 / ZIP 열기"),
             new("Ctrl + Shift + O", "폴더 열기"),
             new("Tab", "이미지 정보(EXIF) 패널"),
-            new("Enter", "이미지 목록")
+            new("Enter", "이미지 목록"),
+            new("Del", "현재 이미지 파일 삭제 (확인 후 휴지통으로, ZIP 제외)")
         ]),
         new("탐색 · 슬라이드쇼",
         [

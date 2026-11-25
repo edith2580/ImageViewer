@@ -524,6 +524,10 @@ public partial class MainWindow : Window
             case ShortcutAction.ToggleSlideShow:
                 _vm.ToggleSlideShowCommand.Execute(null);
                 break;
+            case ShortcutAction.DeleteFile:
+                // 키 이벤트 처리가 끝난 뒤 확인 대화 상자를 연다 (Enter 로 이미지 목록을 여는 것과 같은 방식).
+                Dispatcher.UIThread.Post(() => _vm.DeleteCurrentFileCommand.Execute(null));
+                break;
             default:
                 e.Handled = false;
                 break;

@@ -808,8 +808,9 @@ public sealed partial class MainViewModel
     /// <summary>
     /// 이미지 목록을 다시 읽는다. 현재 이미지는 그대로 유지하고,
     /// 현재 이미지가 삭제되었으면 같은 위치의 이미지를, 내용이 바뀌었으면 다시 읽어 표시한다.
+    /// <paramref name="osdMessage"/> 가 있으면 변경 요약 대신 그 메시지를 보여 준다.
     /// </summary>
-    internal async Task RefreshSourceAsync()
+    internal async Task RefreshSourceAsync(string? osdMessage = null)
     {
         var source = _source;
         if (source is null)
@@ -840,13 +841,21 @@ public sealed partial class MainViewModel
 
         // 바뀐 파일의 캐시를 버린다.
         var oldByKey = _images.ToDictionary(i => i.Key);
+        var anyModified = false;
         foreach (var image in images)
         {
             if (oldByKey.TryGetValue(image.Key, out var old) && IsModified(old, image))
             {
+                anyModified = true;
                 _loader.Invalidate(image);
                 _renderer.Invalidate(image);
             }
+        }
+
+        // 이미 반영한 변경(예: Del 로 지운 뒤 뒤늦게 온 폴더 감시 이벤트)이면 아무것도 하지 않는다.
+        if (!anyModified && images.Count == _images.Count && images.Select(i => i.Key).SequenceEqual(_images.Select(i => i.Key)))
+        {
+            return;
         }
 
         var newIndex = previous is null ? -1 : images.ToList().FindIndex(i => i.Key == previous.Key);
@@ -875,7 +884,7 @@ public sealed partial class MainViewModel
             FrameInfoText = null;
             PlaceholderMessage = $"이 {source.Info.Label}에는 표시할 이미지가 없습니다.";
             OnPropertyChanged(nameof(PositionText));
-            ShowOsd("폴더에 이미지가 없습니다.");
+            ShowOsd(osdMessage ?? "폴더에 이미지가 없습니다.");
             return;
         }
 
@@ -889,7 +898,7 @@ public sealed partial class MainViewModel
         }
 
         var delta = images.Count - oldCount;
-        ShowOsd(delta switch
+        ShowOsd(osdMessage ?? delta switch
         {
             > 0 => $"폴더 변경: 이미지 {delta}개 추가 (총 {images.Count:N0}개)",
             < 0 => $"폴더 변경: 이미지 {-delta}개 제거 (총 {images.Count:N0}개)",
@@ -951,6 +960,75 @@ public sealed partial class MainViewModel
         {
             StartComicPageProbe();
         }
+    }
+
+    #endregion
+
+    #region 파일 삭제 (Del)
+
+    /// <summary>
+    /// 현재 이미지를 지울 수 있는지: 폴더에서 연 일반 이미지 파일만 (ZIP 내부 항목은 제외).
+    /// </summary>
+    internal static bool CanDeleteFile(IImageSource? source, ImageInfo? info) =>
+        source is FolderImageSource &&
+        info is { SourceType: ImageSourceType.File, FullPath: { Length: > 0 } };
+
+    /// <summary>
+    /// 현재 보고 있는 이미지 파일을 확인 대화 상자를 거쳐 휴지통으로 옮기고, 목록에서 빼 같은 위치의 이미지를 보여 준다.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteCurrentFileAsync()
+    {
+        var source = _source;
+        var info = CurrentImage;
+        if (info is null)
+        {
+            return;
+        }
+
+        if (!CanDeleteFile(source, info))
+        {
+            ShowOsd("압축 파일 안의 이미지는 삭제할 수 없습니다.");
+            return;
+        }
+
+        var path = info.FullPath!;
+        var confirmed = _dialogs.Confirm(
+            $"이 파일을 휴지통으로 옮길까요?\n\n{info.Name}\n{FileSizeHelper.Format(info.Size)} · {Path.GetDirectoryName(path)}");
+
+        if (IsSlideShowPlaying)
+        {
+            // 대화 상자를 보는 동안 지난 시간 때문에 바로 다음 이미지로 넘어가지 않게 한다.
+            _slideShow.RestartTimer();
+        }
+
+        if (!confirmed || !ReferenceEquals(source, _source))
+        {
+            return;
+        }
+
+        try
+        {
+            // 디코딩된 이미지가 파일을 잡고 있지는 않지만, 같은 경로의 새 파일과 섞이지 않게 캐시를 비운다.
+            _loader.Invalidate(info);
+            _renderer.Invalidate(info);
+            FileTrash.MoveToTrash(path);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "파일을 휴지통으로 옮기지 못했습니다: {Name}", info.Name);
+            _dialogs.ShowMessage($"파일을 삭제하지 못했습니다.\n\n{info.Name}\n{ex.Message}", isError: true);
+            return;
+        }
+
+        _logger.LogInformation("휴지통으로 옮김: {Name}", info.Name);
+
+        // 폴더 감시가 꺼져 있어도 바로 목록에서 빼고, 같은 위치의 이미지를 보여 준다.
+        await RefreshSourceAsync($"휴지통으로 옮겼습니다: {info.Name}");
     }
 
     #endregion

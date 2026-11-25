@@ -39,6 +39,7 @@ public enum ShortcutAction
     ToggleComicMode,
     ToggleComicDirection,
     ToggleComicBlankPage,
+    DeleteFile,
 }
 
 public static class KeyboardHelper
@@ -87,6 +88,7 @@ public static class KeyboardHelper
             Key.OemPlus or Key.Add => ShortcutAction.ZoomIn,
             Key.OemMinus or Key.Subtract => ShortcutAction.ZoomOut,
             Key.Space => ShortcutAction.ToggleSlideShow,
+            Key.Delete => ShortcutAction.DeleteFile,
             _ => ShortcutAction.None,
         };
     }
