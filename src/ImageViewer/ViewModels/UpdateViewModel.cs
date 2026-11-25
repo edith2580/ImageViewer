@@ -32,6 +32,7 @@ public sealed partial class UpdateViewModel : ObservableObject, IDisposable
     private readonly IAppLifetime _lifetime;
     private readonly ILogger<UpdateViewModel> _logger;
     private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _downloadCts;
     private ReleaseInfo? _release;
 
     public UpdateViewModel(
@@ -68,7 +69,7 @@ public sealed partial class UpdateViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsBusy), nameof(IsDownloading), nameof(CanInstall), nameof(InstallButtonText))]
-    [NotifyCanExecuteChangedFor(nameof(CheckNowCommand), nameof(InstallCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckNowCommand), nameof(InstallCommand), nameof(CancelDownloadCommand))]
     private UpdateState _state;
 
     [ObservableProperty]
@@ -206,24 +207,29 @@ public sealed partial class UpdateViewModel : ObservableObject, IDisposable
 
         IsNoticeVisible = true;
         Progress = 0;
+        ErrorMessage = null;
+
+        // 사용자가 [취소] 로 이 다운로드만 멈출 수 있게 앱 종료용 토큰과 연결한 토큰을 따로 둔다.
+        using var download = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _downloadCts = download;
         State = UpdateState.Downloading;
         try
         {
-            var package = await _service.ResolvePackageAsync(release, Kind, _cts.Token);
+            var package = await _service.ResolvePackageAsync(release, Kind, download.Token);
             var progress = new Progress<double>(p => Progress = p * 100);
             var relaunch = SafeRelaunchPath();
 
             if (Kind == InstallKind.Installed)
             {
                 var setup = UpdateInstaller.InstallerDownloadPath(package);
-                await _service.DownloadAsync(package, setup, progress, _cts.Token);
+                await _service.DownloadAsync(package, setup, progress, download.Token);
                 State = UpdateState.Installing;
                 _lifetime.ExitAndRun(UpdateInstaller.InstallerStartInfo(setup, relaunch));
             }
             else
             {
                 var target = UpdateInstaller.PortableDownloadPath(ExePath);
-                await _service.DownloadAsync(package, target, progress, _cts.Token);
+                await _service.DownloadAsync(package, target, progress, download.Token);
                 UpdateInstaller.SwapPortable(ExePath, target);
                 State = UpdateState.Installing;
                 _lifetime.ExitAndRun(UpdateInstaller.RelaunchStartInfo(ExePath, relaunch));
@@ -243,9 +249,21 @@ public sealed partial class UpdateViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
+            _logger.LogInformation("업데이트 다운로드를 취소했습니다.");
+            Progress = 0;
             State = UpdateState.Available;
         }
+        finally
+        {
+            _downloadCts = null;
+        }
     }
+
+    private bool CanCancelDownload() => State == UpdateState.Downloading;
+
+    /// <summary>받고 있는 업데이트를 멈춘다. 받다 만 파일은 지우고 [지금 업데이트] 로 다시 받을 수 있다.</summary>
+    [RelayCommand(CanExecute = nameof(CanCancelDownload))]
+    private void CancelDownload() => _downloadCts?.Cancel();
 
     private string? SafeRelaunchPath()
     {

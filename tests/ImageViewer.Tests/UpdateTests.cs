@@ -37,6 +37,15 @@ public sealed class UpdateTests : IDisposable
         public void Bytes(string url, byte[] bytes) =>
             Routes[url] = () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
 
+        /// <summary>앞부분 <paramref name="sent"/> 바이트만 보내고 멈추는 응답 (연결이 멈춘 서버).</summary>
+        public void Stalls(string url, byte[] sent, long contentLength) =>
+            Routes[url] = () =>
+            {
+                var content = new StreamContent(new StallingStream(sent));
+                content.Headers.ContentLength = contentLength;
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+            };
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Requests.Add(request);
@@ -218,6 +227,104 @@ public sealed class UpdateTests : IDisposable
         await Assert.ThrowsAsync<UpdateException>(() => service.DownloadAsync(tampered, target, null, CancellationToken.None));
         Assert.False(File.Exists(target));
         Assert.False(File.Exists(target + ".part"));
+    }
+
+    /// <summary>주어진 데이터를 다 읽은 뒤에는 취소될 때까지 기다리는 스트림.</summary>
+    private sealed class StallingStream(byte[] data) : Stream
+    {
+        private int _position;
+
+        public int Reads { get; private set; }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            Reads++;
+            if (_position < data.Length)
+            {
+                var count = Math.Min(buffer.Length, data.Length - _position);
+                data.AsMemory(_position, count).CopyTo(buffer);
+                _position += count;
+                return count;
+            }
+
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task Stalled_download_is_aborted_and_the_partial_file_removed()
+    {
+        var server = new FakeServer();
+        server.Stalls("https://example.test/dl/ImageViewer-1.0.6-portable.exe", new byte[1000], contentLength: 100_000);
+        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed)
+        {
+            CurrentVersion = Version.Parse("1.0.5"),
+            StallTimeout = TimeSpan.FromMilliseconds(300),
+        };
+        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", new string('a', 64))))!;
+        var package = await service.ResolvePackageAsync(release, InstallKind.Portable, CancellationToken.None);
+        var target = Path.Combine(_dir, "ImageViewer.exe.new");
+
+        var started = Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => service.DownloadAsync(package, target, null, CancellationToken.None));
+        Assert.Contains("응답하지 않아", ex.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"멈춘 다운로드가 {started.Elapsed} 뒤에야 끝났습니다.");
+        Assert.False(File.Exists(target));
+        Assert.False(File.Exists(target + ".part"));
+    }
+
+    [Fact]
+    public async Task Download_can_be_cancelled_by_the_user()
+    {
+        var server = new FakeServer();
+        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", new string('a', 64))));
+        server.Stalls("https://example.test/dl/ImageViewer-1.0.6-portable.exe", new byte[1000], contentLength: 100_000);
+        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed)
+        {
+            CurrentVersion = Version.Parse("1.0.5"),
+            StallTimeout = TimeSpan.FromMinutes(5), // 멈춤 타이머가 아니라 사용자의 취소로 끝나야 한다
+        };
+
+        var exe = Path.Combine(_dir, "ImageViewer.exe");
+        File.WriteAllText(exe, "old");
+        var lifetime = new FakeLifetime();
+        using var vm = new UpdateViewModel(service, Settings(), lifetime, kind: InstallKind.Portable, exePath: exe);
+        await vm.CheckNowCommand.ExecuteAsync(null);
+        Assert.False(vm.CancelDownloadCommand.CanExecute(null));
+
+        var install = vm.InstallCommand.ExecuteAsync(null);
+        var waited = Stopwatch.StartNew();
+        while (vm.Progress <= 0 && waited.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(UpdateState.Downloading, vm.State);
+        Assert.True(vm.CancelDownloadCommand.CanExecute(null));
+        vm.CancelDownloadCommand.Execute(null);
+        await install.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(UpdateState.Available, vm.State);
+        Assert.True(vm.CanInstall); // 다시 받을 수 있다
+        Assert.Equal("old", File.ReadAllText(exe));
+        Assert.False(File.Exists(exe + ".new"));
+        Assert.False(File.Exists(exe + ".new.part"));
+        Assert.Null(lifetime.Ran);
     }
 
     private sealed class SyncProgress(Action<double> report) : IProgress<double>

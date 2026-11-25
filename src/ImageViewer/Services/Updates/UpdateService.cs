@@ -56,6 +56,12 @@ public sealed class UpdateService : IDisposable
 
     public Version CurrentVersion { get; init; }
 
+    /// <summary>
+    /// 다운로드 중 이 시간 동안 받은 데이터가 없으면(서버 · 연결이 멈춤) 중단한다.
+    /// 전체 시간은 제한하지 않는다 (느린 연결에서도 계속 받고 있으면 끝까지 받는다).
+    /// </summary>
+    public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
     /// <summary>프로젝트 파일의 &lt;AssemblyMetadata Include="UpdateRepository" /&gt; (예: owner/ImageViewer).</summary>
     public static string? Repository =>
         typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
@@ -260,14 +266,20 @@ public sealed class UpdateService : IDisposable
     /// <summary>
     /// <paramref name="targetPath"/> 로 내려받는다. 먼저 ".part" 에 받고, SHA-256 이 맞을 때만 최종 이름으로 바꾼다.
     /// 값이 다르면 받은 파일을 지우고 <see cref="UpdateException"/>.
+    /// 응답이 <see cref="StallTimeout"/> 동안 멈추면 <see cref="UpdateException"/>,
+    /// <paramref name="ct"/> 로 취소하면 <see cref="OperationCanceledException"/>.
     /// </summary>
     public async Task DownloadAsync(UpdatePackage package, string targetPath, IProgress<double>? progress, CancellationToken ct)
     {
         RequireAllowedScheme(package.Asset.DownloadUrl);
         var part = targetPath + ".part";
+
+        // 데이터를 받을 때마다 다시 맞추는 "멈춤" 타이머. 응답 헤더를 기다리는 시간에도 적용된다.
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        stall.CancelAfter(StallTimeout);
         try
         {
-            using (var response = await _http.GetAsync(package.Asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
+            using (var response = await _http.GetAsync(package.Asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, stall.Token).ConfigureAwait(false))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -275,14 +287,15 @@ public sealed class UpdateService : IDisposable
                 }
 
                 var total = response.Content.Headers.ContentLength ?? package.Asset.Size;
-                await using var input = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using var input = await response.Content.ReadAsStreamAsync(stall.Token).ConfigureAwait(false);
                 await using var output = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
                 using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                 var buffer = new byte[1 << 16];
                 long done = 0;
                 int read;
-                while ((read = await input.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+                while ((read = await ReadNetworkAsync(input, buffer, stall.Token).ConfigureAwait(false)) > 0)
                 {
+                    stall.CancelAfter(StallTimeout);
                     hash.AppendData(buffer, 0, read);
                     await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                     done += read;
@@ -302,15 +315,43 @@ public sealed class UpdateService : IDisposable
             }
 
             File.Move(part, targetPath, overwrite: true);
-            _logger.LogInformation("업데이트 파일을 받았습니다: {Path}", targetPath);
+            _logger.LogInformation("업데이트 파일을 받았습니다: {Name}", Path.GetFileName(targetPath));
         }
         catch (HttpRequestException ex)
         {
             throw new UpdateException("업데이트 파일을 받는 중 연결이 끊겼습니다.", ex);
         }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("업데이트 파일 다운로드가 {Seconds}초 동안 멈춰 중단했습니다: {Name}",
+                StallTimeout.TotalSeconds, package.Asset.Name);
+            throw new UpdateException("업데이트 서버가 응답하지 않아 다운로드를 중단했습니다. 잠시 뒤 다시 시도해 주세요.", ex);
+        }
         finally
         {
             TryDelete(part);
+        }
+    }
+
+    /// <summary>
+    /// 응답 스트림에서 읽는다. 연결이 끊겨 생긴 <see cref="IOException"/> 은 디스크 쓰기 오류와 구분되도록
+    /// <see cref="HttpRequestException"/> 으로 바꾼다.
+    /// </summary>
+    private static async ValueTask<int> ReadNetworkAsync(Stream input, byte[] buffer, CancellationToken ct)
+    {
+        try
+        {
+            return await input.ReadAsync(buffer, ct).ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            // 취소(멈춤 타이머 포함)로 연결을 끊은 경우에도 IOException 이 올 수 있다.
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ex.Message, ex, ct);
+            }
+
+            throw new HttpRequestException(ex.Message, ex);
         }
     }
 

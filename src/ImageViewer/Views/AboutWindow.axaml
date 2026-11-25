@@ -54,6 +54,9 @@
                         <Button Content="{Binding InstallButtonText}" MinWidth="96" Height="26" Padding="10,0"
                                 Command="{Binding InstallCommand}"
                                 IsVisible="{Binding CanInstall}" />
+                        <Button Content="다운로드 취소" MinWidth="96" Height="26" Padding="10,0"
+                                Command="{Binding CancelDownloadCommand}"
+                                IsVisible="{Binding IsDownloading}" />
                         <Button Content="업데이트 확인" MinWidth="96" Height="26" Padding="10,0"
                                 Command="{Binding CheckNowCommand}" />
                     </StackPanel>

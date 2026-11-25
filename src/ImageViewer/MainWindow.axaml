@@ -681,6 +681,9 @@
                 <ProgressBar Height="4" Margin="0,10,6,0" Minimum="0" Maximum="100" Value="{Binding Progress, Mode=OneWay}"
                              Foreground="{StaticResource AccentBrush}" Background="#FF333333" BorderThickness="0"
                              IsVisible="{Binding IsDownloading}" />
+                <Button Classes="ToolButton" Content="취소" FontSize="12" HorizontalAlignment="Right" Margin="0,8,6,0"
+                        Command="{Binding CancelDownloadCommand}" IsVisible="{Binding IsDownloading}"
+                        ToolTip.Tip="다운로드를 멈춥니다 (나중에 다시 받을 수 있음)" />
                 <DockPanel Margin="0,12,6,0" IsVisible="{Binding CanInstall}">
                     <Button Classes="ToolButton" Content="변경 내용" FontSize="12" Foreground="#FF7DB4FF"
                             Command="{Binding OpenReleasePageCommand}" ToolTip.Tip="릴리스 페이지를 엽니다" />

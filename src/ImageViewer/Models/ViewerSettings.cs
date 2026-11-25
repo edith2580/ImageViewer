@@ -61,7 +61,7 @@ public sealed class ViewerSettings
         Filter.SharpenSigma = Math.Clamp(Filter.SharpenSigma, 0.1, 5.0);
         Filter.SharpenAmount = Math.Clamp(Filter.SharpenAmount, 0.1, 5.0);
         Limits.MaxImageMegapixels = Math.Clamp(Limits.MaxImageMegapixels, 10, 1000);
-        Limits.MaxZipEntryMegabytes = Math.Clamp(Limits.MaxZipEntryMegabytes, 10, 4096);
+        Limits.MaxZipEntryMegabytes = Math.Clamp(Limits.MaxZipEntryMegabytes, 10, LimitSettings.MaxZipEntryMegabytesLimit);
         return this;
     }
 }
@@ -137,6 +137,9 @@ public sealed class FilterSettings
 /// <summary>과도한 메모리 사용을 막기 위한 상한.</summary>
 public sealed class LimitSettings
 {
+    /// <summary>ZIP 항목은 메모리에 통째로 읽으므로 배열 한도(약 2GB)보다 작아야 한다.</summary>
+    public const int MaxZipEntryMegabytesLimit = 2047;
+
     public int MaxImageMegapixels { get; set; } = 150;
     public int MaxZipEntryMegabytes { get; set; } = 512;
 }

@@ -16,6 +16,15 @@ namespace ImageViewer.Services.ImageSources;
 /// </summary>
 public sealed class ZipImageSource : IImageSource
 {
+    /// <summary>항목 하나를 담을 수 있는 최대 크기 (메모리 스트림 · 배열 한도, 약 2GB).</summary>
+    internal static readonly long MaxEntryBytesLimit = Array.MaxLength;
+
+    /// <summary>
+    /// 메모리 스트림을 미리 잡아 두는 최대 크기. 헤더의 크기 값은 ZIP 을 만든 쪽이 마음대로 적을 수 있으므로
+    /// 그만큼 한 번에 잡지 않고, 이보다 큰 항목은 읽으면서 늘린다.
+    /// </summary>
+    internal const int MaxInitialCapacity = 16 * 1024 * 1024;
+
     private readonly string _zipPath;
     private readonly long _maxEntryBytes;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -33,7 +42,7 @@ public sealed class ZipImageSource : IImageSource
     public ZipImageSource(string zipPath, long maxEntryBytes = 512L * 1024 * 1024)
     {
         _zipPath = zipPath;
-        _maxEntryBytes = maxEntryBytes;
+        _maxEntryBytes = Math.Clamp(maxEntryBytes, 1, MaxEntryBytesLimit);
         Info = new ImageSourceInfo(zipPath, ImageSourceType.Zip);
     }
 
@@ -190,8 +199,7 @@ public sealed class ZipImageSource : IImageSource
                 try
                 {
                     using var source = entry.OpenEntryStream();
-                    var capacity = (int)Math.Clamp(entry.Size, 0, _maxEntryBytes);
-                    var memory = new MemoryStream(capacity);
+                    var memory = new MemoryStream(InitialCapacity(entry.Size, _maxEntryBytes));
                     CopyWithLimit(source, memory, _maxEntryBytes, cancellationToken);
                     memory.Position = 0;
                     return memory;
@@ -219,6 +227,10 @@ public sealed class ZipImageSource : IImageSource
             _gate.Release();
         }
     }
+
+    /// <summary>헤더에 적힌 크기로 정하는 메모리 스트림 초기 크기 (최대 <see cref="MaxInitialCapacity"/>).</summary>
+    internal static int InitialCapacity(long declaredSize, long maxEntryBytes) =>
+        (int)Math.Clamp(declaredSize, 0, Math.Min(maxEntryBytes, MaxInitialCapacity));
 
     /// <summary>헤더의 크기 정보를 신뢰하지 않고 실제 읽은 바이트 수로 상한을 검증한다.</summary>
     private static void CopyWithLimit(Stream source, Stream destination, long limit, CancellationToken cancellationToken)
