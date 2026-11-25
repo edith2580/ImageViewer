@@ -493,17 +493,12 @@ public sealed class ImageLoaderService : IDisposable
                 settings.SetDefine(MagickFormat.Jpeg, "size", $"{sizeHint.Width}x{sizeHint.Height}");
             }
 
-            var pixels = (long)info.Width * info.Height;
             if (info.Width == 0 || info.Height == 0)
             {
                 throw new ImageLoadException("이미지 크기 정보를 읽을 수 없습니다.");
             }
 
-            if (pixels > maxPixels)
-            {
-                throw new ImageLoadException(
-                    $"이미지가 너무 큽니다. ({info.Width:N0} × {info.Height:N0}, 허용 한도 {maxPixels / 1_000_000:N0} MP)");
-            }
+            EnsureWithinPixelLimit(info.Width, info.Height, maxPixels);
         }
         catch (MagickException ex)
         {
@@ -516,7 +511,7 @@ public sealed class ImageLoaderService : IDisposable
 
         // 애니메이션: 첫 프레임만 바로 디코딩하고, 나머지는 재생하면서 차례로 디코딩한다 (AnimationPlayback).
         // ImageMagick 은 첫 프레임만 요청해도 모든 프레임을 풀기 때문에 큰 애니메이션에서 수 초 · 수 GB 가 든다.
-        if (animated && TryReadAnimation(stream, formatName, keepAnimation: thumbnailHint is null) is { } animation)
+        if (animated && TryReadAnimation(stream, formatName, maxPixels, keepAnimation: thumbnailHint is null) is { } animation)
         {
             return animation;
         }
@@ -616,24 +611,50 @@ public sealed class ImageLoaderService : IDisposable
         }
     }
 
+    /// <summary>디코딩 전 픽셀 수 검사. 한도를 넘으면 <see cref="ImageLoadException"/>.</summary>
+    internal static void EnsureWithinPixelLimit(long width, long height, long maxPixels)
+    {
+        if (width * height > maxPixels)
+        {
+            throw new ImageLoadException(
+                $"이미지가 너무 큽니다. ({width:N0} × {height:N0}, 허용 한도 {maxPixels / 1_000_000:N0} MP)");
+        }
+    }
+
     /// <summary>
     /// GIF / WebP 가 애니메이션(프레임 2개 이상)이면 첫 프레임과 재생용 원본을 만든다.
     /// 애니메이션이 아니거나 읽을 수 없으면 null (ImageMagick 으로 다시 읽는다).
+    /// 캔버스가 픽셀 수 한도를 넘으면 <see cref="ImageLoadException"/>.
     /// </summary>
-    private static DecodeResult? TryReadAnimation(Stream stream, string formatName, bool keepAnimation)
+    private static DecodeResult? TryReadAnimation(Stream stream, string formatName, long maxPixels, bool keepAnimation)
     {
         stream.Position = 0;
         var data = new byte[stream.Length];
         stream.ReadExactly(data);
         stream.Position = 0;
 
+        AnimationSource? animation;
         try
         {
-            if (AnimationSource.TryCreate(data, formatName) is not { } animation)
-            {
-                return null;
-            }
+            animation = AnimationSource.TryCreate(data, formatName);
+        }
+        catch (ImageLoadException)
+        {
+            return null;
+        }
 
+        if (animation is null)
+        {
+            return null;
+        }
+
+        // 앞의 검사(ImageMagick Ping)는 GIF 의 첫 프레임 크기만 본다. 프레임은 1×1 이어도 논리 화면(캔버스)은
+        // 65535×65535 일 수 있고, 재생 · 썸네일은 캔버스 크기로 디코딩하므로 캔버스로 다시 검사한다.
+        // (이 예외는 ImageMagick 으로 다시 읽지 않고 그대로 사용자에게 보여 준다)
+        EnsureWithinPixelLimit(animation.Width, animation.Height, maxPixels);
+
+        try
+        {
             var first = animation.DecodeFirstFrame();
             return new DecodeResult(first, formatName)
             {
