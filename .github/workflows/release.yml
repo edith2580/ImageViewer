@@ -421,6 +421,9 @@ jobs:
     needs: [prepare, build-windows, build-unix]
     if: needs.prepare.outputs.tag != ''
     runs-on: ubuntu-latest
+    # 자동 업데이트 서명 키(UPDATE_SIGNING_KEY)는 이 환경의 비밀값으로만 둔다.
+    # 환경에 "Required reviewers" 를 걸어 두면 릴리스마다 승인한 뒤에만 서명 · 배포된다.
+    environment: release-signing
 
     steps:
       - name: Checkout repository
@@ -438,6 +441,33 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
+
+      # 앱은 SHA256SUMS.txt.sig 를 앱에 들어 있는 공개키(ImageViewer.csproj 의 UpdatePublicKey)로 확인한 뒤에만
+      # 확인값을 믿고 업데이트를 설치한다. 서명이 없거나 키가 맞지 않으면 릴리스를 만들지 않는다.
+      - name: Sign SHA256SUMS.txt
+        shell: bash
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${UPDATE_SIGNING_KEY:-}" ]; then
+            echo "::error::release-signing 환경에 UPDATE_SIGNING_KEY 비밀값이 없습니다. README 의 '업데이트 서명 키' 를 참고하세요."
+            exit 1
+          fi
+
+          umask 077
+          KEY="$RUNNER_TEMP/update-signing-key.pem"
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$KEY"
+          trap 'rm -f "$KEY" "$RUNNER_TEMP/sig.der" "$RUNNER_TEMP/pub.der"' EXIT
+
+          openssl dgst -sha256 -sign "$KEY" -out "$RUNNER_TEMP/sig.der" dist/SHA256SUMS.txt
+          base64 -w0 "$RUNNER_TEMP/sig.der" > dist/SHA256SUMS.txt.sig
+
+          # 앱에 들어 있는 공개키로 다시 확인한다 (비밀값과 공개키가 짝이 맞지 않으면 여기서 멈춘다).
+          PUBLIC_KEY=$(grep -oP 'Include="UpdatePublicKey" Value="\K[^"]+' src/ImageViewer/ImageViewer.csproj)
+          printf '%s' "$PUBLIC_KEY" | base64 -d > "$RUNNER_TEMP/pub.der"
+          openssl dgst -sha256 -verify "$RUNNER_TEMP/pub.der" -keyform DER \
+            -signature "$RUNNER_TEMP/sig.der" dist/SHA256SUMS.txt
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog

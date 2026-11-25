@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,13 +27,20 @@ public sealed class UpdateException(string message, Exception? inner = null) : E
 ///
 /// - 최신 릴리스: GET https://api.github.com/repos/{저장소}/releases/latest (임시 · 사전 릴리스 제외)
 /// - 설치 버전은 ImageViewer-x.y.z-setup.exe, 포터블은 ImageViewer-x.y.z-portable.exe 를 받는다.
-/// - 받은 파일은 SHA-256 을 확인한 뒤에만 쓴다. 값은 GitHub 가 계산해 주는 파일 digest 를 우선 쓰고,
-///   없으면 릴리스의 SHA256SUMS.txt 에서 찾는다. 둘 다 없으면 설치하지 않는다.
-/// - 저장소는 빌드 시 프로젝트 파일의 UpdateRepository 값으로 정해진다.
+/// - 받은 파일은 SHA-256 을 확인한 뒤에만 쓴다. 값은 릴리스의 SHA256SUMS.txt 에서 찾고,
+///   그 파일은 SHA256SUMS.txt.sig (ECDSA P-256 / SHA-256 서명) 를 앱에 들어 있는 공개키로 확인한 뒤에만 믿는다.
+///   GitHub 가 계산한 파일 digest 는 같은 릴리스에서 오므로 진위 확인에는 쓰지 않고, 있으면 값이 같은지만 본다.
+///   (릴리스 파일과 해시를 함께 바꿀 수 있는 사람도 서명 키 없이는 업데이트를 만들 수 없다)
+/// - 서명 키는 GitHub 의 보호된 환경(release-signing)에만 있고, 릴리스할 때 승인을 받아 서명한다.
+/// - 저장소와 공개키는 빌드 시 프로젝트 파일의 UpdateRepository · UpdatePublicKey 값으로 정해진다.
 /// </summary>
 public sealed class UpdateService : IDisposable
 {
     public const string SumsFileName = "SHA256SUMS.txt";
+    public const string SignatureFileName = SumsFileName + ".sig";
+
+    /// <summary>확인값 · 서명 파일의 최대 크기 (이보다 크면 받지 않는다).</summary>
+    private const int MaxSmallFileBytes = 64 * 1024;
     public const string SetupSuffix = "-setup.exe";
     public const string PortableSuffix = "-portable.exe";
 
@@ -42,14 +50,23 @@ public sealed class UpdateService : IDisposable
     private readonly bool _ownsHttp;
     private readonly ILogger<UpdateService> _logger;
 
-    public UpdateService(ILogger<UpdateService>? logger = null, HttpClient? http = null, Uri? feedBase = null)
+    private readonly string? _publicKey;
+
+    /// <param name="publicKey">릴리스 서명 확인용 공개키 (SubjectPublicKeyInfo, Base64). 없으면 프로젝트 파일의 UpdatePublicKey.</param>
+    public UpdateService(ILogger<UpdateService>? logger = null, HttpClient? http = null, Uri? feedBase = null, string? publicKey = null)
     {
         _logger = logger ?? NullLogger<UpdateService>.Instance;
         _ownsHttp = http is null;
         _http = http ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         FeedBase = feedBase ?? DefaultFeedBase();
         CurrentVersion = ParseVersion(AboutInfo.VersionOf(typeof(UpdateService).Assembly)) ?? new Version(0, 0, 0);
+        _publicKey = publicKey ?? PublicKey;
     }
+
+    /// <summary>프로젝트 파일의 &lt;AssemblyMetadata Include="UpdatePublicKey" /&gt; (릴리스 서명 확인용 공개키).</summary>
+    public static string? PublicKey =>
+        typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "UpdatePublicKey")?.Value is { Length: > 0 } key ? key : null;
 
     /// <summary>릴리스 정보 주소의 기준 (끝이 / 인 주소). 최신 릴리스는 이 아래 releases/latest.</summary>
     public Uri FeedBase { get; }
@@ -232,35 +249,108 @@ public sealed class UpdateService : IDisposable
         return release.Assets.FirstOrDefault(a => a.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>받을 파일과 그 SHA-256 을 정한다. 둘 중 하나라도 없으면 <see cref="UpdateException"/>.</summary>
+    /// <summary>
+    /// 받을 파일과 그 SHA-256 을 정한다. 서명된 SHA256SUMS.txt 에서만 값을 얻는다.
+    /// 파일 · 확인값 · 서명 중 하나라도 없거나 서명이 맞지 않으면 <see cref="UpdateException"/>.
+    /// </summary>
     public async Task<UpdatePackage> ResolvePackageAsync(ReleaseInfo release, InstallKind kind, CancellationToken ct)
     {
         var asset = SelectAsset(release, kind) ?? throw new UpdateException(
             $"이 릴리스({release.Tag})에는 {(kind == InstallKind.Installed ? "설치 파일" : "포터블 실행 파일")}이 없습니다.");
 
-        var sha = asset.Sha256;
-        if (sha is null && release.Assets.FirstOrDefault(a => a.Name.Equals(SumsFileName, StringComparison.OrdinalIgnoreCase)) is { } sums)
+        if (_publicKey is null)
         {
-            RequireAllowedScheme(sums.DownloadUrl);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(ApiTimeout);
-            try
-            {
-                var text = await _http.GetStringAsync(sums.DownloadUrl, timeout.Token).ConfigureAwait(false);
-                sha = FindInSums(text, asset.Name);
-            }
-            catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
-            {
-                throw new UpdateException("파일 확인값(SHA256SUMS.txt)을 받지 못했습니다.", ex);
-            }
+            throw new UpdateException("이 빌드에는 업데이트 서명을 확인할 키가 없어 자동으로 설치할 수 없습니다.");
         }
 
-        if (sha is null)
+        var sumsAsset = FindAsset(release, SumsFileName);
+        var signatureAsset = FindAsset(release, SignatureFileName);
+        if (sumsAsset is null || signatureAsset is null)
         {
-            throw new UpdateException("릴리스에 파일 확인값(SHA-256)이 없어 안전하게 설치할 수 없습니다.");
+            throw new UpdateException("이 릴리스에는 서명된 파일 확인값(SHA256SUMS.txt.sig)이 없어 안전하게 설치할 수 없습니다.");
+        }
+
+        var sums = await DownloadSmallAsync(sumsAsset, "파일 확인값(SHA256SUMS.txt)", ct).ConfigureAwait(false);
+        var signature = await DownloadSmallAsync(signatureAsset, "릴리스 서명(SHA256SUMS.txt.sig)", ct).ConfigureAwait(false);
+        if (!VerifySignature(sums, Encoding.ASCII.GetString(signature), _publicKey))
+        {
+            _logger.LogWarning("업데이트 서명 확인 실패: {Tag}", release.Tag);
+            throw new UpdateException("릴리스 서명이 올바르지 않아 설치하지 않았습니다. 다운로드 페이지에서 직접 받아 주세요.");
+        }
+
+        var sha = FindInSums(Encoding.UTF8.GetString(sums), asset.Name) ?? throw new UpdateException(
+            $"서명된 파일 확인값에 {asset.Name} 이(가) 없어 안전하게 설치할 수 없습니다.");
+
+        // GitHub digest 는 같은 릴리스에서 오므로 서명을 대신하지 못한다. 있으면 같은 값인지만 본다.
+        if (asset.Sha256 is { } digest && !string.Equals(digest, sha, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UpdateException("릴리스 파일의 확인값이 서명된 값과 달라 설치하지 않았습니다.");
         }
 
         return new UpdatePackage(release, asset, sha);
+    }
+
+    private static ReleaseAsset? FindAsset(ReleaseInfo release, string name) =>
+        release.Assets.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>확인값 · 서명처럼 작은 파일을 받는다 (<see cref="MaxSmallFileBytes"/> 를 넘으면 거부).</summary>
+    private async Task<byte[]> DownloadSmallAsync(ReleaseAsset asset, string what, CancellationToken ct)
+    {
+        RequireAllowedScheme(asset.DownloadUrl);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(ApiTimeout);
+        try
+        {
+            using var response = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new UpdateException($"{what}을(를) 받지 못했습니다. (HTTP {(int)response.StatusCode})");
+            }
+
+            await using var input = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            using var memory = new MemoryStream();
+            var buffer = new byte[8192];
+            int read;
+            while ((read = await input.ReadAsync(buffer, timeout.Token).ConfigureAwait(false)) > 0)
+            {
+                memory.Write(buffer, 0, read);
+                if (memory.Length > MaxSmallFileBytes)
+                {
+                    throw new UpdateException($"{what}이(가) 너무 큽니다.");
+                }
+            }
+
+            return memory.ToArray();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new UpdateException($"{what}을(를) 받지 못했습니다.", ex);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="data"/> 에 대한 ECDSA P-256 / SHA-256 서명(Base64, DER 또는 r||s)을
+    /// <paramref name="publicKeyBase64"/>(SubjectPublicKeyInfo, Base64)로 확인한다.
+    /// </summary>
+    internal static bool VerifySignature(byte[] data, string signatureBase64, string publicKeyBase64)
+    {
+        try
+        {
+            var signature = Convert.FromBase64String(signatureBase64.Trim());
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKeyBase64.Trim()), out _);
+            if (key.KeySize != 256)
+            {
+                return false;
+            }
+
+            return key.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence) ||
+                   key.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

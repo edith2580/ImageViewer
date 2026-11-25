@@ -55,8 +55,42 @@ public sealed class UpdateTests : IDisposable
         }
     }
 
+    /// <summary>테스트용 릴리스 서명 키 (앱에 들어 있는 실제 키와 다르다).</summary>
+    private static readonly ECDsa SigningKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    private static readonly string PublicKey = Convert.ToBase64String(SigningKey.ExportSubjectPublicKeyInfo());
+
     private static UpdateService Service(FakeServer server, string current = "1.0.5") =>
-        new(http: new HttpClient(server), feedBase: Feed) { CurrentVersion = Version.Parse(current) };
+        new(http: new HttpClient(server), feedBase: Feed, publicKey: PublicKey) { CurrentVersion = Version.Parse(current) };
+
+    private static string Sign(byte[] data, ECDsa? key = null) =>
+        Convert.ToBase64String((key ?? SigningKey).SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
+
+    /// <summary>
+    /// 릴리스 서버를 꾸민다: 파일들과, 그 SHA-256 을 담은 SHA256SUMS.txt 와 서명(.sig)을 올리고 릴리스 JSON 의 assets 를 돌려준다.
+    /// <paramref name="hashes"/> 로 확인값을 바꿔 넣을 수 있다 (서명은 그 내용에 대해 만든다).
+    /// <paramref name="digests"/> 로 GitHub digest 를 붙일 수 있다.
+    /// </summary>
+    private static string SignedAssets(FakeServer server, (string Name, byte[] Data)[] files,
+        Dictionary<string, string>? hashes = null, bool withSignature = true, ECDsa? key = null,
+        Dictionary<string, string>? digests = null)
+    {
+        var sums = Encoding.UTF8.GetBytes(string.Concat(files.Select(f =>
+            (hashes?.GetValueOrDefault(f.Name) ?? Sha(f.Data)) + "  " + f.Name + "\n")));
+        server.Bytes("https://example.test/dl/SHA256SUMS.txt", sums);
+        var assets = files.Select(f =>
+        {
+            server.Bytes("https://example.test/dl/" + f.Name, f.Data);
+            return Asset(f.Name, digests?.GetValueOrDefault(f.Name));
+        }).Append(Asset("SHA256SUMS.txt")).ToList();
+
+        if (withSignature)
+        {
+            server.Bytes("https://example.test/dl/SHA256SUMS.txt.sig", Encoding.ASCII.GetBytes(Sign(sums, key)));
+            assets.Add(Asset("SHA256SUMS.txt.sig"));
+        }
+
+        return string.Join(",", assets);
+    }
 
     private static string Sha(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
@@ -183,25 +217,79 @@ public sealed class UpdateTests : IDisposable
     }
 
     [Fact]
-    public async Task Hash_comes_from_digest_or_sums_file_and_is_required()
+    public async Task Hash_comes_only_from_a_correctly_signed_sums_file()
     {
+        var setup = RandomNumberGenerator.GetBytes(1000);
+        var portable = RandomNumberGenerator.GetBytes(1000);
+        (string, byte[])[] files = [("ImageViewer-1.0.6-setup.exe", setup), ("ImageViewer-1.0.6-portable.exe", portable)];
+
+        // 올바르게 서명된 확인값
         var server = new FakeServer();
         using var service = Service(server);
-        var digest = new string('c', 64);
+        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(server, files)))!;
+        Assert.Equal(Sha(setup), (await service.ResolvePackageAsync(release, InstallKind.Installed, CancellationToken.None)).Sha256);
+        Assert.Equal(Sha(portable), (await service.ResolvePackageAsync(release, InstallKind.Portable, CancellationToken.None)).Sha256);
 
-        var withDigest = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", digest)))!;
-        Assert.Equal(digest, (await service.ResolvePackageAsync(withDigest, InstallKind.Portable, CancellationToken.None)).Sha256);
+        // 서명 파일이 없는 릴리스: GitHub digest 가 있어도 설치하지 않는다
+        var unsigned = new FakeServer();
+        using var unsignedService = Service(unsigned);
+        var noSig = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(unsigned, files, withSignature: false,
+            digests: new() { ["ImageViewer-1.0.6-setup.exe"] = Sha(setup) })))!;
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => unsignedService.ResolvePackageAsync(noSig, InstallKind.Installed, CancellationToken.None));
+        Assert.Contains("SHA256SUMS.txt.sig", ex.Message);
 
-        var fromSums = new string('d', 64);
-        server.Bytes("https://example.test/dl/SHA256SUMS.txt", Encoding.UTF8.GetBytes($"{fromSums}  ImageViewer-1.0.6-setup.exe\n"));
-        var withSums = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-setup.exe") + "," + Asset("SHA256SUMS.txt")))!;
-        Assert.Equal(fromSums, (await service.ResolvePackageAsync(withSums, InstallKind.Installed, CancellationToken.None)).Sha256);
+        // 서명한 뒤 확인값을 바꿔치기한 릴리스
+        server.Bytes("https://example.test/dl/SHA256SUMS.txt",
+            Encoding.UTF8.GetBytes(new string('0', 64) + "  ImageViewer-1.0.6-setup.exe\n"));
+        ex = await Assert.ThrowsAsync<UpdateException>(() => service.ResolvePackageAsync(release, InstallKind.Installed, CancellationToken.None));
+        Assert.Contains("서명이 올바르지 않아", ex.Message);
 
-        var none = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-setup.exe")))!;
-        await Assert.ThrowsAsync<UpdateException>(() => service.ResolvePackageAsync(none, InstallKind.Installed, CancellationToken.None));
+        // 다른 키로 서명한 릴리스 (파일 · 확인값 · 서명을 함께 만든 공격자)
+        var forged = new FakeServer();
+        using var forgedService = Service(forged);
+        using var attackerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var forgedRelease = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(forged, files, key: attackerKey)))!;
+        ex = await Assert.ThrowsAsync<UpdateException>(() => forgedService.ResolvePackageAsync(forgedRelease, InstallKind.Installed, CancellationToken.None));
+        Assert.Contains("서명이 올바르지 않아", ex.Message);
+
+        // 서명된 확인값에 없는 파일
+        var partial = new FakeServer();
+        using var partialService = Service(partial);
+        var partialRelease = UpdateService.ParseRelease(ReleaseJson("v1.0.6",
+            SignedAssets(partial, [("ImageViewer-1.0.6-setup.exe", setup)]) + "," + Asset("ImageViewer-1.0.6-portable.exe")))!;
+        await Assert.ThrowsAsync<UpdateException>(() => partialService.ResolvePackageAsync(partialRelease, InstallKind.Portable, CancellationToken.None));
+
+        // GitHub digest 가 서명된 값과 다르면 설치하지 않는다
+        var mismatch = new FakeServer();
+        using var mismatchService = Service(mismatch);
+        var mismatchRelease = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(mismatch, files,
+            digests: new() { ["ImageViewer-1.0.6-setup.exe"] = new string('9', 64) })))!;
+        ex = await Assert.ThrowsAsync<UpdateException>(() => mismatchService.ResolvePackageAsync(mismatchRelease, InstallKind.Installed, CancellationToken.None));
+        Assert.Contains("서명된 값과 달라", ex.Message);
 
         // 포터블 파일이 없는 릴리스
-        await Assert.ThrowsAsync<UpdateException>(() => service.ResolvePackageAsync(withSums, InstallKind.Portable, CancellationToken.None));
+        var setupOnly = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(new FakeServer(), [("ImageViewer-1.0.6-setup.exe", setup)])))!;
+        await Assert.ThrowsAsync<UpdateException>(() => service.ResolvePackageAsync(setupOnly, InstallKind.Portable, CancellationToken.None));
+    }
+
+    [Fact]
+    public void Openssl_signature_used_by_the_release_workflow_is_accepted()
+    {
+        // 릴리스 워크플로와 같은 방식(openssl dgst -sha256 -sign, DER 를 Base64 로)으로 일회용 키로 만든 값.
+        const string publicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKRg9MOLg/TDtfjm7E0HAFg0HkqYa331AsDlcICDZspMs/Jq/rUQXbPeNr3PevKeCL6XYUeQRNLxOjCfL3tW1tQ==";
+        const string signature = "MEUCIQDJPc6G/NcRdhld8F6U7v6ga1Xe5bc2q/exT3UXuy7SSQIgINfthAL/ec87UirPkbGGbPjddMST+AFvudxzzXRmF+I=";
+        var sums = Encoding.UTF8.GetBytes(new string('a', 64) + "  ImageViewer-9.9.9-setup.exe\n");
+
+        Assert.True(UpdateService.VerifySignature(sums, signature + "\n", publicKey));
+        Assert.False(UpdateService.VerifySignature([.. sums, (byte)' '], signature, publicKey));
+        Assert.False(UpdateService.VerifySignature(sums, "not base64!", publicKey));
+        Assert.False(UpdateService.VerifySignature(sums, signature, "bad key"));
+
+        // 앱에 들어 있는 실제 공개키는 P-256 키여야 한다.
+        Assert.NotNull(UpdateService.PublicKey);
+        using var real = ECDsa.Create();
+        real.ImportSubjectPublicKeyInfo(Convert.FromBase64String(UpdateService.PublicKey!), out _);
+        Assert.Equal(256, real.KeySize);
     }
 
     [Fact]
@@ -209,9 +297,8 @@ public sealed class UpdateTests : IDisposable
     {
         var data = RandomNumberGenerator.GetBytes(300_000);
         var server = new FakeServer();
-        server.Bytes("https://example.test/dl/ImageViewer-1.0.6-portable.exe", data);
         using var service = Service(server);
-        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", Sha(data))))!;
+        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", SignedAssets(server, [("ImageViewer-1.0.6-portable.exe", data)])))!;
         var package = await service.ResolvePackageAsync(release, InstallKind.Portable, CancellationToken.None);
 
         var target = Path.Combine(_dir, "ImageViewer.exe.new");
@@ -270,13 +357,14 @@ public sealed class UpdateTests : IDisposable
     public async Task Stalled_download_is_aborted_and_the_partial_file_removed()
     {
         var server = new FakeServer();
+        var assets = SignedAssets(server, [("ImageViewer-1.0.6-portable.exe", new byte[100_000])]);
         server.Stalls("https://example.test/dl/ImageViewer-1.0.6-portable.exe", new byte[1000], contentLength: 100_000);
-        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed)
+        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed, publicKey: PublicKey)
         {
             CurrentVersion = Version.Parse("1.0.5"),
             StallTimeout = TimeSpan.FromMilliseconds(300),
         };
-        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", new string('a', 64))))!;
+        var release = UpdateService.ParseRelease(ReleaseJson("v1.0.6", assets))!;
         var package = await service.ResolvePackageAsync(release, InstallKind.Portable, CancellationToken.None);
         var target = Path.Combine(_dir, "ImageViewer.exe.new");
 
@@ -292,9 +380,9 @@ public sealed class UpdateTests : IDisposable
     public async Task Download_can_be_cancelled_by_the_user()
     {
         var server = new FakeServer();
-        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", new string('a', 64))));
+        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", SignedAssets(server, [("ImageViewer-1.0.6-portable.exe", new byte[100_000])])));
         server.Stalls("https://example.test/dl/ImageViewer-1.0.6-portable.exe", new byte[1000], contentLength: 100_000);
-        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed)
+        using var service = new UpdateService(http: new HttpClient(server) { Timeout = Timeout.InfiniteTimeSpan }, feedBase: Feed, publicKey: PublicKey)
         {
             CurrentVersion = Version.Parse("1.0.5"),
             StallTimeout = TimeSpan.FromMinutes(5), // 멈춤 타이머가 아니라 사용자의 취소로 끝나야 한다
@@ -432,8 +520,7 @@ public sealed class UpdateTests : IDisposable
     {
         var newExe = RandomNumberGenerator.GetBytes(50_000);
         var server = new FakeServer();
-        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", Sha(newExe))));
-        server.Bytes("https://example.test/dl/ImageViewer-1.0.6-portable.exe", newExe);
+        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", SignedAssets(server, [("ImageViewer-1.0.6-portable.exe", newExe)])));
         using var service = Service(server);
 
         var exe = Path.Combine(_dir, "ImageViewer.exe");
@@ -459,8 +546,9 @@ public sealed class UpdateTests : IDisposable
     public async Task Failed_download_keeps_the_app_and_offers_the_release_page()
     {
         var server = new FakeServer();
-        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", Asset("ImageViewer-1.0.6-portable.exe", new string('e', 64))));
-        server.Bytes("https://example.test/dl/ImageViewer-1.0.6-portable.exe", [1, 2, 3]); // 확인값과 다름
+        var assets = SignedAssets(server, [("ImageViewer-1.0.6-portable.exe", [1, 2, 3])],
+            hashes: new() { ["ImageViewer-1.0.6-portable.exe"] = new string('e', 64) }); // 받은 파일이 서명된 확인값과 다름
+        server.Json(Feed + "releases/latest", ReleaseJson("v1.0.6", assets));
         using var service = Service(server);
 
         var exe = Path.Combine(_dir, "ImageViewer.exe");

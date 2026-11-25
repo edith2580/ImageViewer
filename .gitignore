@@ -480,3 +480,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# 자동 업데이트 서명 키 (비밀키는 저장소에 넣지 않는다)
+.imageviewer-signing/
+.imageviewer-signing*.zip
+*.pem

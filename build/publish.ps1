@@ -109,13 +109,52 @@ if (-not $SkipMsi) {
     }
 }
 
-# 자동 업데이트용 확인값: GitHub 릴리스에 설치 파일 · 포터블 exe · MSI 와 함께 SHA256SUMS.txt 를 올린다.
-# (앱은 GitHub 가 계산한 파일 digest 를 먼저 쓰고, 없으면 이 파일을 본다)
+# 자동 업데이트용 확인값: GitHub 릴리스에 설치 파일 · 포터블 exe · MSI 와 함께 SHA256SUMS.txt 와 그 서명을 올린다.
+# 앱은 SHA256SUMS.txt.sig 를 앱에 들어 있는 공개키로 확인한 뒤에만 확인값을 믿는다 (서명이 없으면 자동 업데이트하지 않는다).
 $sumsFile = Join-Path $root "artifacts\installer\SHA256SUMS.txt"
+$sigFile = "$sumsFile.sig"
 $lines = foreach ($file in $releaseAssets) {
     $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $(Split-Path $file -Leaf)"
 }
 [IO.File]::WriteAllText($sumsFile, ($lines -join "`n") + "`n", (New-Object Text.UTF8Encoding $false))
+Remove-Item $sigFile -ErrorAction SilentlyContinue
+
+# 직접 배포(README 방법 3)할 때: 환경 변수 IMAGEVIEWER_UPDATE_SIGNING_KEY 에 서명 키(PEM) 경로를 넣으면 서명한다.
+# (GitHub Actions 에서는 릴리스 단계가 따로 서명하므로 여기서는 하지 않는다)
+$signingKey = $env:IMAGEVIEWER_UPDATE_SIGNING_KEY
+if ($signingKey) {
+    $openssl = (Get-Command openssl -ErrorAction SilentlyContinue).Source
+    if (-not $openssl) {
+        $gitOpenssl = Join-Path $env:ProgramFiles "Git\usr\bin\openssl.exe"
+        if (Test-Path $gitOpenssl) { $openssl = $gitOpenssl }
+    }
+    if (-not $openssl) { throw "openssl 을 찾지 못해 서명할 수 없습니다. (Git for Windows 에 들어 있습니다)" }
+
+    $sigDer = "$sumsFile.der"
+    & $openssl dgst -sha256 -sign $signingKey -out $sigDer $sumsFile
+    if ($LASTEXITCODE -ne 0) { throw "SHA256SUMS.txt 서명 실패" }
+
+    # 앱에 들어 있는 공개키로 다시 확인한다 (키가 짝이 맞지 않으면 멈춘다).
+    [xml]$csprojXml = Get-Content (Join-Path $root "src\ImageViewer\ImageViewer.csproj") -Encoding UTF8
+    $publicKey = ($csprojXml.Project.ItemGroup.AssemblyMetadata | Where-Object { $_.Include -eq "UpdatePublicKey" }).Value
+    $pubDer = "$sumsFile.pub.der"
+    [IO.File]::WriteAllBytes($pubDer, [Convert]::FromBase64String($publicKey))
+    & $openssl dgst -sha256 -verify $pubDer -keyform DER -signature $sigDer $sumsFile
+    $verified = $LASTEXITCODE -eq 0
+    [IO.File]::WriteAllText($sigFile, [Convert]::ToBase64String([IO.File]::ReadAllBytes($sigDer)), (New-Object Text.UTF8Encoding $false))
+    Remove-Item $sigDer, $pubDer -ErrorAction SilentlyContinue
+    if (-not $verified) {
+        Remove-Item $sigFile -ErrorAction SilentlyContinue
+        throw "서명 키가 앱의 공개키(ImageViewer.csproj 의 UpdatePublicKey)와 짝이 맞지 않습니다."
+    }
+    $releaseFiles = $releaseAssets + $sumsFile + $sigFile
+} else {
+    if (-not $env:GITHUB_ACTIONS) {
+        Write-Warning "IMAGEVIEWER_UPDATE_SIGNING_KEY 가 없어 SHA256SUMS.txt 에 서명하지 않았습니다. 서명 없는 릴리스는 자동 업데이트되지 않습니다."
+    }
+    $releaseFiles = $releaseAssets + $sumsFile
+}
+
 Write-Host "== 릴리스에 올릴 파일 (태그 v$version)" -ForegroundColor Cyan
-Get-Item ($releaseAssets + $sumsFile) | Select-Object Name, Length | Format-Table -AutoSize
+Get-Item $releaseFiles | Select-Object Name, Length | Format-Table -AutoSize

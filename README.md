@@ -125,8 +125,11 @@ GitHub 저장소(`ImageViewer.csproj` 의 `UpdateRepository`, 현재 `edith2580/
   새 버전이 있으면 메인 창 오른쪽 위에 알림: **지금 업데이트** / **이 버전 건너뛰기** / 변경 내용 / 닫기.
 - 다운로드 중에는 알림 · 정보 창의 **취소** 로 멈출 수 있고, 30초 동안 받은 데이터가 없으면(서버 · 연결이 멈춤) 스스로 중단한다.
   받다 만 파일은 지우고, **지금 업데이트** 로 다시 받을 수 있다.
-- 받은 파일은 SHA-256 이 맞을 때만 쓴다. 값은 GitHub 가 계산한 파일 digest, 없으면 릴리스의 `SHA256SUMS.txt`.
-  둘 다 없으면 설치하지 않고 다운로드 페이지를 안내한다.
+- 받은 파일은 SHA-256 이 맞을 때만 쓴다. 값은 릴리스의 `SHA256SUMS.txt` 에서 찾고, 그 파일은
+  `SHA256SUMS.txt.sig` (ECDSA P-256 / SHA-256 서명) 를 앱에 들어 있는 공개키(`ImageViewer.csproj` 의 `UpdatePublicKey`)로
+  확인한 뒤에만 믿는다. GitHub 가 계산한 파일 digest 는 같은 릴리스에서 오므로 진위 확인에 쓰지 않고, 있으면 값이 같은지만 본다.
+  서명이 없거나 맞지 않으면 설치하지 않고 다운로드 페이지를 안내한다.
+  (릴리스 파일과 확인값을 함께 바꿀 수 있는 사람도 서명 키 없이는 자동 업데이트로 프로그램을 바꿔치기할 수 없다)
 - **설치 버전** (설치 폴더가 프로그램 추가/제거 정보의 InstallLocation 과 같음): `ImageViewer-x.y.z-setup.exe` 를 `%TEMP%` 에 받고,
   앱을 종료한 뒤 `setup.exe /S /RELAUNCH=<보던 경로>` 로 조용히 설치한다. 설치 프로그램은 앱이 끝나기를 기다렸다가 덮어쓰고
   다시 실행한다. 관리자 권한 창은 뜨지 않는다. 탐색기 메뉴는 이미 등록된 경우에만 다시 등록한다.
@@ -136,12 +139,24 @@ GitHub 저장소(`ImageViewer.csproj` 의 `UpdateRepository`, 현재 `edith2580/
 - 개발 빌드(exe 옆에 ImageViewer.dll 이 있는 빌드)는 자동 설치하지 않고 다운로드 페이지만 연다.
   Debug 빌드는 환경 변수 `IMAGEVIEWER_UPDATE_FEED=http://127.0.0.1:8765/` 로 로컬 테스트 서버를 가리킬 수 있다 (`releases/latest` 를 읽는다).
 
-릴리스 절차:
+릴리스 절차: 아래 **GitHub Actions 릴리스 워크플로 가이드** 를 따른다 (태그를 푸시하면 빌드 · 서명 · 배포).
+파일 이름은 바꾸지 않는다 (`-setup.exe` / `-portable.exe` 로 끝나는 파일을 찾는다).
 
-1. `ImageViewer.csproj` 의 `<Version>` 을 올리고 `build\publish.ps1` 실행.
-2. GitHub 에서 태그 `v<버전>` (예: `v1.0.6`) 으로 릴리스를 만들고 (Pre-release 체크 해제),
-   `artifacts\installer` 의 `ImageViewer-<버전>-setup.exe`, `ImageViewer-<버전>-portable.exe`, `SHA256SUMS.txt` 를 올린다.
-   파일 이름은 바꾸지 않는다 (`-setup.exe` / `-portable.exe` 로 끝나는 파일을 찾는다).
+### 업데이트 서명 키
+
+- 서명 키(비밀키, PEM)는 GitHub 저장소 **Settings → Environments → `release-signing`** 의 환경 비밀값 `UPDATE_SIGNING_KEY` 에만 둔다.
+  이 환경에 **Required reviewers** (본인)를 걸어 두면, 릴리스 워크플로가 서명하기 전에 승인을 기다린다.
+  (저장소 쓰기 권한이 있는 토큰이 새어도, 승인 없이는 서명된 릴리스를 만들 수 없다)
+- 비밀키는 저장소에 넣지 않는다. 처음 만든 키는 개발 PC 의 `%USERPROFILE%\.imageviewer-signing\update-signing-key.pem` 에 있다.
+  **잃어버리면 이후 버전을 자동 업데이트로 배포할 수 없으므로** 암호 관리자 등 안전한 곳에 따로 보관한다.
+- 키를 바꾸면 `ImageViewer.csproj` 의 `UpdatePublicKey` 도 함께 바꾼다. 이전 공개키를 가진 버전은 새 키로 서명한 릴리스를
+  자동 설치하지 못하므로, 그 사용자들은 한 번 직접 내려받아 설치해야 한다.
+- 새 키 만들기 (Git for Windows 의 openssl):
+
+  ```bash
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out update-signing-key.pem
+  openssl pkey -in update-signing-key.pem -pubout -outform DER | base64 -w0   # → UpdatePublicKey 값
+  ```
 
 ## Windows 탐색기 연동
 
@@ -249,14 +264,16 @@ build/publish.ps1           게시 + 설치 프로그램 생성 스크립트
 
 ## GitHub Actions 릴리스 워크플로 가이드
 
-`.github/workflows/release.yml` 워크플로는 Windows 환경(`windows-latest`)에서 전체 테스트를 실행한 뒤 아래 4개 배포 파일을 자동으로 빌드하고 GitHub Release에 등록한다.
+`.github/workflows/release.yml` 워크플로는 Windows 환경(`windows-latest`)에서 전체 테스트를 실행한 뒤 아래 배포 파일을 자동으로 빌드하고 GitHub Release에 등록한다.
+마지막 릴리스 단계는 `release-signing` 환경에서 실행되므로, 환경에 승인자를 걸어 두었다면 Actions 화면에서 **Review deployments → Approve** 를 눌러야 서명 · 배포가 진행된다.
 
-| 파일 이름                         | 설명                                                   |
-| --------------------------------- | ------------------------------------------------------ |
-| `ImageViewer-<버전>-portable.exe` | 무설치 단일 실행 파일 (포터블 버전 자동 업데이트 대상) |
-| `ImageViewer-<버전>-setup.exe`    | NSIS 설치 프로그램 (설치 버전 자동 업데이트 대상)      |
-| `ImageViewer-<버전>.msi`          | Windows Installer (MSI) 설치 패키지                    |
-| `SHA256SUMS.txt`                  | 위 배포 파일들의 SHA-256 무결성 해시 목록              |
+| 파일 이름                         | 설명                                                                 |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `ImageViewer-<버전>-portable.exe` | 무설치 단일 실행 파일 (포터블 버전 자동 업데이트 대상)               |
+| `ImageViewer-<버전>-setup.exe`    | NSIS 설치 프로그램 (설치 버전 자동 업데이트 대상)                    |
+| `ImageViewer-<버전>.msi`          | Windows Installer (MSI) 설치 패키지                                  |
+| `SHA256SUMS.txt`                  | 배포 파일들의 SHA-256 무결성 해시 목록                               |
+| `SHA256SUMS.txt.sig`              | `SHA256SUMS.txt` 의 서명 (없거나 맞지 않으면 앱이 자동 업데이트 안 함) |
 
 ---
 
@@ -303,6 +320,8 @@ powershell -ExecutionPolicy Bypass -File build\publish.ps1
 # (선택 옵션)
 # - 테스트 생략: powershell -ExecutionPolicy Bypass -File build\publish.ps1 -SkipTests
 # - MSI 생략:   powershell -ExecutionPolicy Bypass -File build\publish.ps1 -SkipMsi
+# - 자동 업데이트 서명: 실행 전에 서명 키 경로를 지정하면 SHA256SUMS.txt.sig 도 만든다
+#   $env:IMAGEVIEWER_UPDATE_SIGNING_KEY = "$env:USERPROFILE\.imageviewer-signing\update-signing-key.pem"
 ```
 
 빌드가 완료되면 `artifacts\installer\` 폴더에 생성된 아래 파일들을 GitHub **Releases → Draft a new release** 화면에서 태그(`v<버전>`)와 함께 직접 업로드한다:
@@ -311,3 +330,4 @@ powershell -ExecutionPolicy Bypass -File build\publish.ps1
 - `artifacts\installer\ImageViewer-<버전>.msi`
 - `artifacts\installer\ImageViewer-<버전>-portable.exe`
 - `artifacts\installer\SHA256SUMS.txt`
+- `artifacts\installer\SHA256SUMS.txt.sig` (서명 키를 지정했을 때만 생긴다. 없으면 이 릴리스는 자동 업데이트되지 않는다)
