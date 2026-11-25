@@ -28,10 +28,13 @@ public sealed class ZipImageSource : IImageSource
     private readonly string _zipPath;
     private readonly long _maxEntryBytes;
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    /// <summary>Dispose 때 진행 중인 읽기를 멈추게 한다.</summary>
+    private readonly CancellationTokenSource _disposeCts = new();
     private FileStream? _fileStream;
     private ZipArchive? _archive;
     private Dictionary<string, IArchiveEntry>? _entries;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     static ZipImageSource()
     {
@@ -50,10 +53,46 @@ public sealed class ZipImageSource : IImageSource
 
     public async Task<IReadOnlyList<ImageInfo>> GetImagesAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var linked = LinkWithDispose(cancellationToken);
+        var ct = linked.Token;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => ReadEntries(cancellationToken), cancellationToken).ConfigureAwait(false);
+            return await Task.Run(() => ReadEntries(ct), ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseGate();
+        }
+    }
+
+    private CancellationTokenSource LinkWithDispose(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
+    }
+
+    /// <summary>읽기를 마치고 잠금을 푼다. 그사이 Dispose 되었으면 여기서 아카이브를 닫는다.</summary>
+    private void ReleaseGate()
+    {
+        _gate.Release();
+        CloseIfDisposed();
+    }
+
+    /// <summary>
+    /// Dispose 되었고 진행 중인 읽기가 없으면 아카이브를 닫는다.
+    /// Dispose 와 읽기를 마친 쪽이 각각 잠금을 푼 뒤 부르므로, 둘 중 늦은 쪽이 반드시 닫는다.
+    /// </summary>
+    private void CloseIfDisposed()
+    {
+        if (!_disposed || !_gate.Wait(0))
+        {
+            return;
+        }
+
+        try
+        {
+            CloseArchive();
         }
         finally
         {
@@ -180,7 +219,9 @@ public sealed class ZipImageSource : IImageSource
             throw new ImageSourceException(image.UnsupportedReason ?? "지원하지 않는 항목입니다.");
         }
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var linked = LinkWithDispose(cancellationToken);
+        var ct = linked.Token;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             return await Task.Run<Stream>(() =>
@@ -188,7 +229,7 @@ public sealed class ZipImageSource : IImageSource
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (_entries is null)
                 {
-                    ReadEntries(cancellationToken);
+                    ReadEntries(ct);
                 }
 
                 if (!_entries!.TryGetValue(image.EntryPath, out var entry))
@@ -200,7 +241,7 @@ public sealed class ZipImageSource : IImageSource
                 {
                     using var source = entry.OpenEntryStream();
                     var memory = new MemoryStream(InitialCapacity(entry.Size, _maxEntryBytes));
-                    CopyWithLimit(source, memory, _maxEntryBytes, cancellationToken);
+                    CopyWithLimit(source, memory, _maxEntryBytes, ct);
                     memory.Position = 0;
                     return memory;
                 }
@@ -220,11 +261,11 @@ public sealed class ZipImageSource : IImageSource
                 {
                     throw new ImageSourceException("ZIP 항목을 읽을 수 없습니다. 손상되었을 수 있습니다.", ex);
                 }
-            }, cancellationToken).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            ReleaseGate();
         }
     }
 
@@ -260,6 +301,10 @@ public sealed class ZipImageSource : IImageSource
         _entries = null;
     }
 
+    /// <summary>
+    /// 아카이브를 닫는다. 창을 닫을 때 UI 스레드에서 불리므로 기다리지 않는다:
+    /// 진행 중인 읽기(큰 항목 복사 등)는 취소하고, 읽는 중이면 그 읽기가 끝나면서 닫는다 (<see cref="ReleaseGate"/>).
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -267,16 +312,11 @@ public sealed class ZipImageSource : IImageSource
             return;
         }
 
-        // 진행 중인 읽기가 끝날 때까지 기다린 뒤 닫는다.
-        _gate.Wait();
-        try
-        {
-            _disposed = true;
-            CloseArchive();
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        _disposed = true;
+        _disposeCts.Cancel();
+        CloseIfDisposed();
     }
+
+    /// <summary>테스트용: 아카이브 파일이 아직 열려 있는지.</summary>
+    internal bool IsArchiveOpen => _fileStream is not null;
 }
