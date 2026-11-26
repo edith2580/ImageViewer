@@ -89,6 +89,29 @@ public partial class MainWindow : Window
             UpdateChrome(allowHide: false);
         };
 
+        // 하단 바는 숨겨져 있다가 나타나므로, 나타날 때와 썸네일 줄 폭이 바뀔 때(창 크기 변경) 현재 썸네일을 가운데로 맞춘다.
+        BottomBar.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty && BottomBar.IsVisible)
+            {
+                Dispatcher.UIThread.Post(ScrollThumbnailIntoView, DispatcherPriority.Loaded);
+            }
+        };
+        ThumbnailList.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged)
+            {
+                Dispatcher.UIThread.Post(ScrollThumbnailIntoView, DispatcherPriority.Loaded);
+            }
+        };
+        ComicThumbnailList.SizeChanged += (_, e) =>
+        {
+            if (e.WidthChanged)
+            {
+                Dispatcher.UIThread.Post(ScrollThumbnailIntoView, DispatcherPriority.Loaded);
+            }
+        };
+
         Viewport.SizeChanged += (_, _) => UpdateViewport();
 
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
@@ -803,39 +826,16 @@ public partial class MainWindow : Window
 
     #region 썸네일
 
+    /// <summary>현재 이미지의 썸네일을 하단 썸네일 줄의 가운데로 스크롤한다 (처음 · 끝 근처는 가능한 만큼).</summary>
     private void ScrollThumbnailIntoView()
     {
         if (_vm.IsComicMode)
         {
-            ScrollListBoxCentered(ComicThumbnailList, _vm.ComicThumbnailSelectedIndex);
+            ThumbnailStripHelper.CenterOnIndex(ComicThumbnailList, _vm.ComicThumbnailSelectedIndex);
         }
         else
         {
-            ScrollListBoxCentered(ThumbnailList, _vm.CurrentIndex);
-        }
-    }
-
-    private static void ScrollListBoxCentered(ListBox listBox, int index)
-    {
-        var count = listBox.Items.Count;
-        if (index < 0 || index >= count || !listBox.IsVisible)
-        {
-            return;
-        }
-
-        listBox.ScrollIntoView(index);
-
-        if (listBox.FindDescendantOfType<ScrollViewer>() is { } scroll)
-        {
-            var extentWidth = scroll.Extent.Width;
-            var viewportWidth = scroll.Viewport.Width;
-            if (extentWidth > viewportWidth && viewportWidth > 0)
-            {
-                var itemWidth = extentWidth / count;
-                var targetX = index * itemWidth - (viewportWidth - itemWidth) / 2;
-                var maxScroll = Math.Max(0, extentWidth - viewportWidth);
-                scroll.Offset = new Vector(Math.Clamp(targetX, 0, maxScroll), scroll.Offset.Y);
-            }
+            ThumbnailStripHelper.CenterOnIndex(ThumbnailList, _vm.CurrentIndex);
         }
     }
 

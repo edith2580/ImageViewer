@@ -14,6 +14,17 @@ public enum ImageListSortColumn
     Size,
 }
 
+/// <summary>이미지 목록에서 키보드로 선택을 옮기는 방향.</summary>
+public enum ListNavigation
+{
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+}
+
 public sealed class ImageListItem
 {
     public ImageListItem(int index, ImageInfo info)
@@ -251,6 +262,53 @@ public sealed partial class ImageListViewModel : ObservableObject
 
         ResultIndex = SelectedItem.Index;
         return true;
+    }
+
+    /// <summary>
+    /// 키보드로 선택을 옮긴다 (화면에 보이는 정렬 순서 기준, 처음 · 끝에서 멈춤).
+    /// 목록을 스크롤만 하고 선택은 그대로 두면 Enter 로 엉뚱한 이미지가 열리므로, 항상 선택 자체를 옮긴다.
+    /// </summary>
+    /// <param name="pageSize">Page Up / Page Down 한 번에 옮길 줄 수 (보이는 줄 수).</param>
+    /// <returns>새로 선택한 항목 (목록이 비었으면 null).</returns>
+    public ImageListItem? MoveSelection(ListNavigation navigation, int pageSize)
+    {
+        if (ItemsView.Count == 0)
+        {
+            return null;
+        }
+
+        var current = SelectedItem is null ? -1 : ItemsView.IndexOf(SelectedItem);
+        var target = NavigateIndex(current, ItemsView.Count, navigation, pageSize);
+        SelectedItem = ItemsView[target];
+        return SelectedItem;
+    }
+
+    /// <summary>현재 위치(<paramref name="current"/>, 없으면 -1)에서 이동한 위치. 범위 밖으로 나가지 않는다.</summary>
+    internal static int NavigateIndex(int current, int count, ListNavigation navigation, int pageSize)
+    {
+        if (count <= 0)
+        {
+            return -1;
+        }
+
+        var page = Math.Max(1, pageSize);
+        if (current < 0 || current >= count)
+        {
+            // 선택이 없으면 위로 가는 키는 처음, 아래로 가는 키는 처음부터 시작한다.
+            return navigation == ListNavigation.End ? count - 1 : 0;
+        }
+
+        var target = navigation switch
+        {
+            ListNavigation.Up => current - 1,
+            ListNavigation.Down => current + 1,
+            ListNavigation.PageUp => current - page,
+            ListNavigation.PageDown => current + page,
+            ListNavigation.Home => 0,
+            ListNavigation.End => count - 1,
+            _ => current,
+        };
+        return Math.Clamp(target, 0, count - 1);
     }
 
     private void ApplySort()

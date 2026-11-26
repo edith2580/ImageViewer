@@ -70,8 +70,9 @@
         <Style Selector="ListBox.ThumbnailList ListBoxItem:pointerover Border.ThumbCard">
             <Setter Property="BorderBrush" Value="#FF666666" />
         </Style>
+        <!-- 현재 이미지의 썸네일: 흰색 2px 테두리 (이미지 목록 창과 같음, 마우스를 올려도 유지되도록 pointerover 뒤에 둔다) -->
         <Style Selector="Border.ThumbCard.current">
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="White" />
             <Setter Property="Background" Value="#FF203450" />
         </Style>
 
