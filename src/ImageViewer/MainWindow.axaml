@@ -13,6 +13,32 @@
         WindowDecorations="BorderOnly"
         DragDrop.AllowDrop="True">
 
+    <Window.Resources>
+        <!--
+            Avalonia 12 는 클라이언트 영역을 확장한 창이 전체 화면이 되면, 화면 맨 위에 마우스를 올렸을 때
+            자체 타이틀바(전체 화면 팝오버: 제목 · 창 모드 · 닫기)를 띄운다. 이 앱은 타이틀바를 직접 그리므로 두 개가 겹친다.
+            창 장식 템플릿에서 팝오버를 빼서 직접 그린 상단 바만 보이게 한다 (코드 비하인드에서 WindowDecorationsTheme 로 지정).
+            창 모드에서는 OS 테두리(BorderOnly)를 쓰고 Avalonia 가 그리는 장식이 없으므로 빈 레이어로 충분하다.
+        -->
+        <ControlTheme x:Key="NoDrawnDecorations" TargetType="WindowDrawnDecorations">
+            <Setter Property="DefaultTitleBarHeight" Value="30" />
+            <Setter Property="DefaultFrameThickness" Value="1" />
+            <Setter Property="DefaultShadowThickness" Value="8" />
+            <Setter Property="Template">
+                <WindowDrawnDecorationsTemplate>
+                    <WindowDrawnDecorationsContent>
+                        <WindowDrawnDecorationsContent.Underlay>
+                            <Panel />
+                        </WindowDrawnDecorationsContent.Underlay>
+                        <WindowDrawnDecorationsContent.Overlay>
+                            <Panel />
+                        </WindowDrawnDecorationsContent.Overlay>
+                    </WindowDrawnDecorationsContent>
+                </WindowDrawnDecorationsTemplate>
+            </Setter>
+        </ControlTheme>
+    </Window.Resources>
+
     <Window.Styles>
         <Style Selector="Image#DisplayImage.placeholder">
             <Setter Property="Effect">

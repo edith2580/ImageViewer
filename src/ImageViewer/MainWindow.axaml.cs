@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ImageViewer.Helpers;
@@ -53,6 +54,12 @@ public partial class MainWindow : Window
         var isMac = OperatingSystem.IsMacOS();
         MacCaptionPanel.IsVisible = isMac;
         WinCaptionPanel.IsVisible = !isMac;
+
+        // 전체 화면에서 Avalonia 의 타이틀바 팝오버가 직접 그린 상단 바와 겹치지 않게 한다 (MainWindow.axaml 참고).
+        if (Resources.TryGetResource("NoDrawnDecorations", null, out var decorations) && decorations is ControlTheme theme)
+        {
+            WindowDecorationsTheme = theme;
+        }
 
         // Linux(X11/Ubuntu)에서는 ExtendClientAreaToDecorationsHint만으로 OS 기본 타이틀바가 숨겨지지 않으므로
         // SystemDecorations.None으로 중복 타이틀바를 제거하고 가장자리 리사이즈를 직접 처리한다.
@@ -364,10 +371,14 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
+    /// <summary>
+    /// 최대화 버튼 · 타이틀바 더블클릭: 전체 화면이면 창 모드로 돌아가고, 아니면 최대화 / 복원한다.
+    /// </summary>
     private void ToggleMaximize()
     {
         if (_vm.IsFullScreen)
         {
+            _vm.IsFullScreen = false;
             return;
         }
 
@@ -377,16 +388,26 @@ public partial class MainWindow : Window
     private void OnWindowStateChanged(WindowState state)
     {
         UpdateMaximizedMargin();
-        var maximized = state == WindowState.Maximized;
-        if (this.TryFindResource(maximized ? "IconRestore" : "IconMaximize", ActualThemeVariant, out var resource) &&
+
+        // 전체 화면도 최대화처럼 "복원" 아이콘을 보여 주고, 누르면 창 모드로 돌아간다.
+        var (icon, tip) = CaptionButtonState(state);
+        if (this.TryFindResource(icon, ActualThemeVariant, out var resource) &&
             resource is Avalonia.Media.Geometry geometry)
         {
             MaximizeIcon.Data = geometry;
         }
-        var tip = maximized ? "이전 크기로 복원" : "최대화";
+
         ToolTip.SetTip(MaximizeButton, tip);
         ToolTip.SetTip(MacMaximizeButton, tip);
     }
+
+    /// <summary>창 상태에 맞는 최대화 버튼 아이콘(리소스 키)과 도움말.</summary>
+    internal static (string Icon, string Tip) CaptionButtonState(WindowState state) => state switch
+    {
+        WindowState.FullScreen => ("IconRestore", "창 모드로 전환 (Alt+Enter)"),
+        WindowState.Maximized => ("IconRestore", "이전 크기로 복원"),
+        _ => ("IconMaximize", "최대화"),
+    };
 
     private void UpdateMaximizedMargin()
     {

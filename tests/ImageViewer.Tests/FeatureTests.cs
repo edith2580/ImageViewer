@@ -5,6 +5,20 @@ using ImageViewer.Services;
 
 namespace ImageViewer.Tests;
 
+public class CaptionButtonTests
+{
+    [Theory]
+    [InlineData(Avalonia.Controls.WindowState.Normal, "IconMaximize", "최대화")]
+    [InlineData(Avalonia.Controls.WindowState.Maximized, "IconRestore", "이전 크기로 복원")]
+    [InlineData(Avalonia.Controls.WindowState.FullScreen, "IconRestore", "창 모드로 전환 (Alt+Enter)")] // 전체 화면도 복원 아이콘
+    public void Maximize_button_shows_restore_when_maximized_or_full_screen(Avalonia.Controls.WindowState state, string icon, string tip)
+    {
+        var (actualIcon, actualTip) = MainWindow.CaptionButtonState(state);
+        Assert.Equal(icon, actualIcon);
+        Assert.Equal(tip, actualTip);
+    }
+}
+
 public class ImageTransformTests
 {
     [Fact]
